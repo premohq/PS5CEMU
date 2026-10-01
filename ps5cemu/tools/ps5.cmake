@@ -41,8 +41,11 @@ set(CMAKE_C_FLAGS_INIT "${PS5_COMMON_FLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "-isystem ${PS5_SDK}/target/include/c++/v1 ${PS5_COMMON_FLAGS} -frtti -fexceptions -fcxx-exceptions -D_LIBCPP_ENABLE_EXPERIMENTAL=1")
 set(CMAKE_ASM_FLAGS_INIT "${PS5_COMMON_FLAGS}")
 
-# Everything is static; the final link is tools/link.sh, not CMake's.
+# Everything is static, and an executable's link is tools/link.sh's (PS5_Vulkan's recipe for a
+# title that links RADV), not the compiler driver's.
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+set(CMAKE_CXX_LINK_EXECUTABLE "bash \"${CMAKE_CURRENT_LIST_DIR}/link.sh\" <TARGET> <LINK_FLAGS> <OBJECTS> <LINK_LIBRARIES>")
+set(CMAKE_C_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE}")
 set(CMAKE_FIND_ROOT_PATH ${PS5_SYSROOT} ${PS5_PACBREW} ${PS5_SDK}/target)
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

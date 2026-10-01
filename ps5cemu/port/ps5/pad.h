@@ -81,6 +81,8 @@ namespace ps5pad
 	// The touchpad's resolution, for normalising touch positions.
 	void TouchResolution(int player, float& width, float& height);
 	void SetVibration(int player, uint8_t largeMotor, uint8_t smallMotor);
+	// The launcher's vibration setting: when off, SetVibration stops the motors instead.
+	void SetVibrationEnabled(bool enabled);
 	void SetLightBar(int player, uint8_t r, uint8_t g, uint8_t b);
 
 	// The port's shortcuts, the same from every controller (masked from the game while held):

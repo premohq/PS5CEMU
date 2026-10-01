@@ -20,6 +20,15 @@ if [[ ${1:-} == --reconfigure ]]; then
 fi
 
 bash "$PS5CEMU_ROOT/tools/cemu-patches.sh" apply
+# RmlUi's Vulkan renderer (compiled into the launcher from the pinned sources) gets its Vulkan
+# functions from the driver: patches/rmlui, applied once
+rmlui=$PS5CEMU_ROOT/.deps/RmlUi-6.2
+for patch in "$PS5CEMU_ROOT"/patches/rmlui/*.patch; do
+    if ! git -C "$rmlui" apply --reverse --check "$patch" 2>/dev/null; then
+        git -C "$rmlui" apply "$patch"
+        echo "==> [rmlui] applied ${patch##*/}"
+    fi
+done
 
 if [[ ! -f $build/build.ninja ]]; then
     mkdir -p "$build"

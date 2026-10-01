@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Thu, 1 Oct 2026 06:43:03 +0000
+Subject: [PATCH] PS5: CemuBin is ps5cemu.elf in the build directory
+
+The port's link step (tools/link.sh, CMake's link rule for the PS5) makes a
+PIE ELF that its packaging turns into eboot.bin; it goes in the build
+directory rather than Cemu's bin/.
+---
+ src/CMakeLists.txt | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 8a8538b..d7ee8ca 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -214,6 +214,12 @@ endif()
+ 
+ if(CEMU_PS5)
+ 	target_link_libraries(CemuBin PRIVATE CemuPS5)
++	# a PIE ELF in the build directory, which the port's tools/package.sh makes eboot.bin
++	set_target_properties(CemuBin PROPERTIES
++		RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/$<1:>"
++		OUTPUT_NAME "ps5cemu"
++		SUFFIX ".elf"
++	)
+ endif()
+ 
+ target_link_libraries(CemuBin PRIVATE

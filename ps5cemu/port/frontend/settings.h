@@ -20,6 +20,9 @@ namespace ps5settings
 		int volume = 100;			  // the TV sound, in percent
 		uint64_t lastGame = 0;		  // title ID
 		std::vector<uint64_t> recent; // newest first, at most four
+		// Why the last game did not start, when that needed a fresh process to show (the launcher
+		// shows it once, then clears it).
+		std::string launchError;
 	};
 
 	Launcher Load();

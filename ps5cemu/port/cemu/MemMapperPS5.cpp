@@ -8,7 +8,7 @@
 //  - backs committed pages with direct memory, the title's large memory pool, mapped at fixed
 //    addresses into the reservation (ProsperoEden backs Eden's guest memory the same way);
 //  - gets executable memory as JIT shared memory, which the kernel grants only once the HEN has
-//    jailbroken the process (port/ps5/jit.cpp).
+//    jailbroken the process (port/ps5/privilege.h).
 //
 // Mapping over a committed page would replace it with fresh memory, where Linux's mprotect keeps
 // its contents, so committed pages are tracked per reservation. As on Linux, freeing pages of a

@@ -86,12 +86,21 @@
     },
     {
       "name": "ps5-mesa",
-      "about": "Mesa 26.2 fork with the PS5 RADV winsys and the VideoOut swapchain (the revision PS5_Vulkan ac9388c pins)",
+      "about": "Mesa 26.2 fork with the PS5 RADV winsys and the VideoOut swapchain, at the revision PS5_Vulkan pins (tools/build-radv.sh builds it with PS5_Vulkan's recipe)",
       "kind": "git",
       "url": "https://github.com/mpereiraesaa/PS5_Mesa.git",
       "commit": "8177db7b8da35bfc20ba948e9e0de72068612a33",
       "path": ".deps/PS5_Mesa",
       "creates": ".deps/PS5_Mesa/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c"
+    },
+    {
+      "name": "ps5-vulkan",
+      "about": "PS5_Vulkan: RADV's build and link recipe for titles (tools/build-radv.sh, tools/radv-link.sh), its linker script and the AGC link stubs",
+      "kind": "git",
+      "url": "https://github.com/mpereiraesaa/PS5_Vulkan.git",
+      "commit": "ac9388c393f0fd1ff9c5dc0c212c771b5fcde176",
+      "path": ".deps/PS5_Vulkan",
+      "creates": ".deps/PS5_Vulkan/tools/radv-link.sh"
     },
     {
       "name": "compiler-rt",

@@ -28,6 +28,9 @@ extern "C"
 	int32_t sceKernelJitCreateSharedMemory(const char* name, size_t length, int maxProtection, int* handleOut);
 	int32_t sceKernelJitMapSharedMemory(int handle, int protection, void** address);
 
+	// files: a folder's entries, as FreeBSD's getdirentries returns them
+	int32_t sceKernelGetdents(int fd, char* buffer, int length);
+
 	// time and threads
 	int32_t sceKernelUsleep(uint32_t microseconds);
 	uint64_t sceKernelGetProcessTime();

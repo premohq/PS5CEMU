@@ -5,13 +5,15 @@
 //   /app0/assets/                    the same, read-only, from inside the app
 //   /data/ps5cemu/                   everything PS5Cemu writes; survives app updates
 //     settings.xml, ps5cemu.json     Cemu's settings and the launcher's
+//     log.txt                        Cemu's log
 //     controllerProfiles/            Cemu's controller profiles
 //     mlc01/                         the Wii U's internal storage: installed games, updates, DLC, saves
 //     games/                         the default game files folder (.wua, .wud/.wux, .rpx folders)
 //     keys.txt                       disc keys for encrypted .wud/.wux dumps
 //     graphicPacks/                  community packs (downloadedGraphicPacks/) and your own
 //     cache/                         shader and pipeline caches
-//     logs/                          boot.log (the port) and log.txt (Cemu)
+//     covers/                        game icons converted for the launcher
+//     logs/                          boot.log (the port; boot.prev.log is the session before)
 
 #pragma once
 

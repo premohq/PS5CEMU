@@ -38,6 +38,8 @@ namespace ps5settings
 			settings.volume = std::clamp(json["volume"].GetInt(), 0, 100);
 		if (json.HasMember("lastGame") && json["lastGame"].IsString())
 			settings.lastGame = std::strtoull(json["lastGame"].GetString(), nullptr, 16);
+		if (json.HasMember("launchError") && json["launchError"].IsString())
+			settings.launchError = json["launchError"].GetString();
 		if (json.HasMember("recent") && json["recent"].IsArray())
 			for (const auto& entry : json["recent"].GetArray())
 				if (entry.IsString() && settings.recent.size() < 4)
@@ -74,6 +76,8 @@ namespace ps5settings
 		for (uint64_t titleId : settings.recent)
 			writer.String(hex(titleId).c_str());
 		writer.EndArray();
+		writer.Key("launchError");
+		writer.String(settings.launchError.c_str());
 		writer.EndObject();
 		const std::string temporary = std::string(ps5paths::kLauncherSettings) + ".tmp";
 		{

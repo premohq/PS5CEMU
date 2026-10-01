@@ -4,6 +4,7 @@
 // no keyboard. Error dialogs go to the boot log, a system notification and the launcher.
 
 #include "WindowSystem.h"
+#include "window.h"
 #include "display.h"
 #include "log.h"
 #include "notify.h"

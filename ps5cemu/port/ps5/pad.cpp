@@ -65,6 +65,7 @@ namespace ps5pad
 		std::mutex s_mutex;
 		std::array<Slot, kMaxPlayers> s_slots;
 		bool s_initialized = false;
+		std::atomic<bool> s_vibrationEnabled{true};
 		std::atomic<Shortcut> s_pendingShortcut{Shortcut::None};
 
 		void OpenSlot(int player, int32_t user)
@@ -197,8 +198,14 @@ namespace ps5pad
 		std::lock_guard lock(s_mutex);
 		if (player < 0 || player >= kMaxPlayers || s_slots[player].handle < 0)
 			return;
-		const PadVibration vibration{largeMotor, smallMotor};
+		const bool enabled = s_vibrationEnabled;
+		const PadVibration vibration{enabled ? largeMotor : (uint8_t)0, enabled ? smallMotor : (uint8_t)0};
 		scePadSetVibration(s_slots[player].handle, &vibration);
+	}
+
+	void SetVibrationEnabled(bool enabled)
+	{
+		s_vibrationEnabled = enabled;
 	}
 
 	void SetLightBar(int player, uint8_t r, uint8_t g, uint8_t b)

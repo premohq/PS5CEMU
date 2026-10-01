@@ -26,6 +26,7 @@
 #include "Cafe/TitleList/SaveList.h"
 #include "Cafe/TitleList/TitleList.h"
 #include "Cemu/ncrypto/ncrypto.h"
+#include "Cemu/Logging/CemuLogging.h"
 #include "Common/ExceptionHandler/ExceptionHandler.h"
 #include "config/ActiveSettings.h"
 #include "config/CemuConfig.h"
@@ -239,6 +240,7 @@ namespace ps5emu
 			error = fmt::format("PS5Cemu cannot write to {}. Is the HEN loaded?", _pathToUtf8(*failedWriteAccess.begin()));
 			return false;
 		}
+		cemuLog_createLogFile(false); // log.txt in /data/ps5cemu, as on the desktop
 		CreateDirectories(ActiveSettings::GetConfigPath("controllerProfiles"));
 		CreateDirectories(ps5paths::kGames);
 		CreateDirectories(ps5paths::kLogs);
@@ -270,11 +272,33 @@ namespace ps5emu
 		return true;
 	}
 
+	void ApplyOptions(const Options& options)
+	{
+		auto& config = GetConfig();
+		config.tv_volume = std::clamp(options.volume, 0, 100);
+		config.overlay.position = options.overlay ? ScreenPosition::kTopLeft : ScreenPosition::kDisabled;
+		if (options.overlay)
+			config.overlay.fps = config.overlay.cpu_usage = config.overlay.ram_usage = true;
+		const bool newFolder = !options.gamesFolder.empty() &&
+			(config.game_paths.size() != 1 || config.game_paths.front() != options.gamesFolder);
+		if (newFolder)
+		{
+			config.game_paths = {options.gamesFolder};
+			CafeTitleList::ClearScanPaths();
+			CafeTitleList::AddScanPath(_utf8ToPath(options.gamesFolder));
+			CafeTitleList::Refresh();
+			ps5log::Line("[emu] games folder is now {}", options.gamesFolder);
+		}
+		GetConfigHandle().Save();
+	}
+
+	bool Scanning()
+	{
+		return CafeTitleList::IsScanning();
+	}
+
 	std::vector<Game> ListGames()
 	{
-		CafeTitleList::WaitForMandatoryScan();
-		while (CafeTitleList::IsScanning())
-			sceKernelUsleep(20000);
 		std::vector<Game> games;
 		for (const TitleId titleId : CafeTitleList::GetAllTitleIds())
 		{
@@ -293,6 +317,16 @@ namespace ps5emu
 			game.hasUpdate = info.HasUpdate();
 			game.version = game.hasUpdate ? info.GetUpdate().GetAppTitleVersion() : base.GetAppTitleVersion();
 			game.dlcCount = (uint32_t)info.GetAOC().size();
+			switch (base.GetFormat())
+			{
+			case TitleInfo::TitleDataFormat::WIIU_ARCHIVE: game.format = "WUA"; break;
+			case TitleInfo::TitleDataFormat::WUD:
+				game.format = boost::iequals(_pathToUtf8(game.path.extension()), ".wux") ? "WUX" : "WUD";
+				break;
+			case TitleInfo::TitleDataFormat::NUS: game.format = "NUS"; break;
+			case TitleInfo::TitleDataFormat::WUHB: game.format = "WUHB"; break;
+			default: game.format = "FOLDER"; break;
+			}
 			games.push_back(std::move(game));
 		}
 		std::sort(games.begin(), games.end(), [](const Game& a, const Game& b) { return boost::ilexicographical_compare(a.name, b.name); });
@@ -360,6 +394,11 @@ namespace ps5emu
 		ps5log::Line("[emu] {} is running ({})", CafeSystem::GetForegroundTitleName(),
 			ActiveSettings::GetCPUMode() == CPUMode::SinglecoreInterpreter ? "interpreter" : "recompiler");
 		return true;
+	}
+
+	bool RendererStarted()
+	{
+		return g_renderer != nullptr;
 	}
 
 	void RunGame()
