@@ -37,6 +37,16 @@ namespace
 				ps5log::Line("[ui] {}", message);
 			return true;
 		}
+
+		// RmlUi takes a path that starts with '/' as relative to the application and strips the
+		// '/'; here it is a path on the console (the covers in /data/ps5cemu/covers).
+		void JoinPath(Rml::String& translated, const Rml::String& document, const Rml::String& path) override
+		{
+			if (!path.empty() && path[0] == '/')
+				translated = path;
+			else
+				Rml::SystemInterface::JoinPath(translated, document, path);
+		}
 	};
 
 	// Files by absolute path, or relative to the launcher's folder.

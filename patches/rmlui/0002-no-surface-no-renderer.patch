@@ -1,0 +1,13 @@
+--- a/Backends/RmlUi_Renderer_VK.cpp
++++ b/Backends/RmlUi_Renderer_VK.cpp
+@@ -797,6 +797,10 @@
+ 	RMLUI_VK_ASSERTMSG(glad_result != 0, "Vulkan loader failed - Instance functions");
+ 
+ 	Initialize_Surface(create_surface_callback);
++	// Without a surface there is nothing to present to, and the queries below would hand the
++	// driver a null one (the asserts that check it are compiled out of release builds).
++	if (!m_p_surface)
++		return false;
+ 	Initialize_QueueIndecies();
+ 	Initialize_Device();
+ 

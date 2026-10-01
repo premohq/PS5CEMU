@@ -1,5 +1,5 @@
 {
-  "about": "Pinned inputs of the PS5Cemu build. `make deps` (tools/deps.py) fetches every missing item and leaves existing checkouts and files untouched. Paths are relative to ps5cemu/.",
+  "about": "Pinned inputs of the PS5Cemu build. `make deps` (tools/deps.py) fetches every missing item and leaves existing checkouts and files untouched. Paths are relative to the repository root.",
   "items": [
     {
       "name": "cemu",

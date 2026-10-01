@@ -392,7 +392,7 @@ namespace ps5launcher
 						game.dlcCount ? fmt::format("  /  {} DLC", game.dlcCount) : ""));
 					SetImage(m_document, "last-played-cover", Cover(game));
 				}
-				else if (m_settings.lastGame && !m_scanning)
+				else if (m_settings.lastGame && m_status.coreReady && !m_scanning)
 				{
 					SetText(m_document, "last-played-title", "Your last game is not here");
 					SetText(m_document, "last-played-caption", "It is no longer in the game files folder.");

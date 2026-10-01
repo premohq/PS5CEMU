@@ -23,14 +23,22 @@ fi
 
 bash "$PS5CEMU_ROOT/tools/cemu-patches.sh" apply
 # RmlUi's Vulkan renderer (compiled into the launcher from the pinned sources) gets its Vulkan
-# functions from the driver: patches/rmlui, applied once
+# functions from the driver: patches/rmlui, applied in order to the pinned files, once per series
+# (a stamp records which). A changed series starts again from the pinned files.
 rmlui=$PS5CEMU_ROOT/.deps/RmlUi-6.2
-for patch in "$PS5CEMU_ROOT"/patches/rmlui/*.patch; do
-    if ! git -C "$rmlui" apply --reverse --check "$patch" 2>/dev/null; then
+stamp=$rmlui/.ps5cemu-patches
+series=$(cat "$PS5CEMU_ROOT"/patches/rmlui/*.patch | sha256sum | cut -d' ' -f1)
+if [[ $(cat "$stamp" 2>/dev/null) != "$series" ]]; then
+    if ! git -C "$rmlui" diff --quiet -- Backends; then
+        [[ -f $stamp ]] || { echo "$rmlui/Backends has changes that are not patches/rmlui's" >&2; exit 1; }
+        git -C "$rmlui" checkout -q -- Backends # an older series of the patches
+    fi
+    for patch in "$PS5CEMU_ROOT"/patches/rmlui/*.patch; do
         git -C "$rmlui" apply "$patch"
         echo "==> [rmlui] applied ${patch##*/}"
-    fi
-done
+    done
+    echo "$series" >"$stamp"
+fi
 
 if [[ ! -f $build/build.ninja ]]; then
     mkdir -p "$build"

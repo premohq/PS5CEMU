@@ -119,7 +119,7 @@ links and packages, but its output (`build/app-check`) is not an app.
 | `port/frontend/` | The launcher, on RmlUi's Vulkan renderer through RADV |
 | `port/main_ps5.cpp` | The entry point: sandbox escape, logs, Cemu's core, the launcher, the game |
 | `patches/cemu/` | The port's changes to Cemu's own files (`tools/cemu-patches.sh apply` or `export`) |
-| `patches/rmlui/` | RmlUi's Vulkan renderer taking its functions from the driver instead of a loader |
+| `patches/rmlui/` | RmlUi's Vulkan renderer: its functions come from the driver instead of a loader, and it stops cleanly without a display surface |
 | `tools/` | Dependencies, the builds, the PS5 link (`link.sh`) and the packaging (`package.sh`) |
 | `sce_sys/` | The title's `param.json`. The icons are drawn by `tools/render-icons.py` |
 
