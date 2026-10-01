@@ -23,7 +23,7 @@ set(CMAKE_NM llvm-nm-18 CACHE FILEPATH "")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(NOT DEFINED ENV{PS5_PAYLOAD_SDK})
-	message(FATAL_ERROR "PS5_PAYLOAD_SDK is not set (make deps installs the SDK; the Makefile exports it)")
+	message(FATAL_ERROR "PS5_PAYLOAD_SDK is not set (tools/env.sh sets it; make deps installs the SDK)")
 endif()
 set(PS5_SDK "$ENV{PS5_PAYLOAD_SDK}")
 set(PS5_PACBREW "$ENV{PS5CEMU_PACBREW}")

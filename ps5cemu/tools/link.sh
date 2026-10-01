@@ -94,7 +94,18 @@ else
     exit 2
 fi
 
-"$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr "${radv_link_flags[@]}" \
+# Optional hooks, weak and checked before use, that nothing on the console provides: as null they
+# stay out of the imports, which must all name a system module. The SDK libc's dlfcn wrappers report
+# no dynamic loader without theirs (as ProsperoEden links); zstd's are its tracing.
+absent=()
+for name in __dlopen __dlsym __dladdr __dlclose __dlerror ZSTD_trace_compress_begin ZSTD_trace_compress_end \
+        ZSTD_trace_decompress_begin ZSTD_trace_decompress_end; do
+    absent+=("--defsym=$name=0")
+done
+# RADV's platform layer has the real thread-local destructor registration; a link check has none
+((check)) && absent+=(--defsym=__cxa_thread_atexit_impl=0)
+
+"$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr "${radv_link_flags[@]}" "${absent[@]}" \
     --version-script "$vulkan/tooling/native/app-symbols.map" --exclude-libs=ALL --gc-sections \
     --error-limit=0 -Map="$output.map" -e _start -o "$output" \
     "$work/app_crt.o" "$work/app_cpp_runtime.o" \

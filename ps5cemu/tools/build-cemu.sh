@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Configures and builds Cemu for the PS5 (build/cemu), with the port's host code from port/.
 #
-#   tools/build-cemu.sh              apply patches/cemu if needed, configure once, build
+#   tools/build-cemu.sh              apply patches/cemu if needed, configure once, build and link
+#                                    build/cemu/ps5cemu.elf (tools/link.sh; PS5CEMU_LINK_CHECK=1 links
+#                                    a check without RADV)
 #   tools/build-cemu.sh --reconfigure  start the CMake build directory over
 #   tools/build-cemu.sh TARGET...    build only those targets
 #
@@ -40,6 +42,13 @@ if [[ ! -f $build/build.ninja ]]; then
         -DALLOW_PORTABLE=OFF -DBoost_USE_STATIC_LIBS=ON -DBoost_ROOT="$PS5CEMU_SYSROOT" \
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF \
         >"$build.configure.log" 2>&1 || { tail -40 "$build.configure.log"; exit 1; }
+fi
+
+# ps5cemu.elf is relinked when a link check gives way to RADV (tools/link.sh), or the other way round:
+# ninja does not see the difference
+elf=$build/ps5cemu.elf
+if [[ -f $elf.linkcheck && ${PS5CEMU_LINK_CHECK:-0} != 1 ]] || [[ -f $elf && ! -f $elf.linkcheck && ${PS5CEMU_LINK_CHECK:-0} == 1 ]]; then
+    rm -f "$elf" "$elf.linkcheck"
 fi
 
 ninja -C "$build" -j "$JOBS" "$@"
