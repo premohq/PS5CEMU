@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// PS5Cemu: Cemu's WindowSystem on the PS5. There is one window, the TV, at the output resolution
+// PS5Cemu: Cemu's WindowSystem on the PS5. There is one window, the TV, at VideoOut's 3840x2160
 // (display.h); no separate GamePad window (the touchpad click swaps the TV and GamePad pictures);
 // no keyboard. Error dialogs go to the boot log, a system notification and the launcher.
 
@@ -19,13 +19,11 @@ namespace
 
 	void UpdateSizes()
 	{
-		uint32_t width, height;
-		ps5display::OutputSize(width, height);
-		s_windowInfo.width = (int32_t)width;
-		s_windowInfo.height = (int32_t)height;
-		s_windowInfo.phys_width = (int32_t)width;
-		s_windowInfo.phys_height = (int32_t)height;
-		s_windowInfo.dpi_scale = height / 1080.0;
+		s_windowInfo.width = (int32_t)ps5display::kWidth;
+		s_windowInfo.height = (int32_t)ps5display::kHeight;
+		s_windowInfo.phys_width = (int32_t)ps5display::kWidth;
+		s_windowInfo.phys_height = (int32_t)ps5display::kHeight;
+		s_windowInfo.dpi_scale = ps5display::kHeight / 1080.0;
 	}
 }
 

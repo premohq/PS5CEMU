@@ -128,6 +128,8 @@ namespace ps5ui
 			return false;
 		}
 		host.vulkan = true;
+		// laid out at 1920x1080, drawn on VideoOut's 3840x2160 swapchain (patches/rmlui/0003)
+		host.render.SetLayoutSize(kWidth, kHeight);
 		host.render.SetViewport(kWidth, kHeight);
 		if (!host.render.IsSwapchainValid())
 		{

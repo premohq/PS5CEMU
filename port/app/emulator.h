@@ -30,6 +30,7 @@ namespace ps5emu
 		std::string gamesFolder;
 		bool overlay = false; // the performance overlay from the start
 		int volume = 100;	  // the TV's, in percent
+		int upscaleFilter = 1; // Cemu's upscale_filter: 0 linear, 1 bicubic, 2 bicubic Hermite, 3 nearest
 	};
 
 	// Paths, settings (with PS5 defaults on first start), MLC, graphic packs, controllers and

@@ -756,7 +756,10 @@ namespace ps5launcher
 					else if (key == Key::Down)
 						m_option = (m_option + 1) % 3;
 					else if (change && m_option == 0)
-						changed = (m_settings.output4k = !m_settings.output4k, true);
+					{
+						m_settings.upscaleFilter = (m_settings.upscaleFilter + (key == Key::Left ? 3 : 1)) % 4;
+						changed = true;
+					}
 					else if (change && m_option == 1)
 						changed = (m_settings.highFrameRate = !m_settings.highFrameRate, true);
 					else if (change && m_option == 2)
@@ -780,7 +783,8 @@ namespace ps5launcher
 
 			void UpdateSettingsPage()
 			{
-				SetText(m_document, "video-output", m_settings.output4k ? "Output: 4K (3840x2160)" : "Output: 1080p (1920x1080, scaled to 4K)");
+				static constexpr const char* kFilters[] = {"Linear", "Bicubic", "Bicubic Hermite", "Nearest neighbour"};
+				SetText(m_document, "video-output", fmt::format("Upscaling to 4K: {}", kFilters[std::clamp(m_settings.upscaleFilter, 0, 3)]));
 				SetText(m_document, "video-hfr", fmt::format("120 Hz output: {}", m_settings.highFrameRate ? "On (where the TV takes it)" : "Off"));
 				SetText(m_document, "video-overlay", fmt::format("Performance overlay: {}", m_settings.overlay ? "On" : "Off"));
 				for (int row = 0; row < 3; row++)
@@ -863,7 +867,7 @@ namespace ps5launcher
 					const bool saved = ps5settings::Save(m_settings);
 					if (m_status.coreReady)
 					{
-						ps5emu::ApplyOptions({m_settings.gamesFolder, m_settings.overlay, m_settings.volume});
+						ps5emu::ApplyOptions({m_settings.gamesFolder, m_settings.overlay, m_settings.volume, m_settings.upscaleFilter});
 						m_scanning = true;
 						m_games.clear();
 					}

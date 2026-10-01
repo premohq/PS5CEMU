@@ -92,10 +92,8 @@ namespace ps5vk
 			}
 		}
 
-		uint32_t width, height;
-		ps5display::OutputSize(width, height);
-		width = std::min(width, chosen->parameters.visibleRegion.width);
-		height = std::min(height, chosen->parameters.visibleRegion.height);
+		// the mode's whole size: RADV's VideoOut swapchains are no other
+		const uint32_t width = chosen->parameters.visibleRegion.width, height = chosen->parameters.visibleRegion.height;
 
 		VkDisplaySurfaceCreateInfoKHR createInfo{VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR};
 		createInfo.displayMode = chosen->displayMode;
@@ -112,8 +110,7 @@ namespace ps5vk
 			error = "cannot create the VideoOut surface (VkResult " + std::to_string((int)result) + ")";
 			return VK_NULL_HANDLE;
 		}
-		ps5log::Line("[vulkan] VideoOut surface {}x{} on the {}x{} mode at {:.2f} Hz", width, height,
-			chosen->parameters.visibleRegion.width, chosen->parameters.visibleRegion.height, chosen->parameters.refreshRate / 1000.0);
+		ps5log::Line("[vulkan] VideoOut surface {}x{} at {:.2f} Hz", width, height, chosen->parameters.refreshRate / 1000.0);
 		return surface;
 	}
 }

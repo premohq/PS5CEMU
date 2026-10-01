@@ -1,0 +1,58 @@
+--- a/Backends/RmlUi_Renderer_VK.cpp
++++ b/Backends/RmlUi_Renderer_VK.cpp
+@@ -346,6 +346,10 @@
+ 		}
+ 		else
+ 		{
++			// in the layout's pixels: the swapchain's are a multiple of them
++			if (m_layout_width > 0 && m_layout_height > 0)
++				region = Rml::Rectanglei::FromCorners({region.Left() * m_width / m_layout_width, region.Top() * m_height / m_layout_height},
++					{region.Right() * m_width / m_layout_width, region.Bottom() * m_height / m_layout_height});
+ 			m_scissor.extent.width = region.Width();
+ 			m_scissor.extent.height = region.Height();
+ 			m_scissor.offset.x = Rml::Math::Clamp(region.Left(), 0, m_width);
+@@ -770,6 +774,12 @@
+ 	CreateResourcesDependentOnSize(window_extent);
+ }
+ 
++void RenderInterface_VK::SetLayoutSize(int width, int height)
++{
++	m_layout_width = width;
++	m_layout_height = height;
++}
++
+ bool RenderInterface_VK::IsSwapchainValid()
+ {
+ 	return m_p_swapchain != nullptr;
+@@ -2338,7 +2348,9 @@
+ 
+ 	m_scissor_original = m_scissor;
+ 
+-	m_projection = Rml::Matrix4f::ProjectOrtho(0.0f, static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, -10000, 10000);
++	const bool layout = m_layout_width > 0 && m_layout_height > 0;
++	m_projection = Rml::Matrix4f::ProjectOrtho(0.0f, static_cast<float>(layout ? m_layout_width : m_width),
++		static_cast<float>(layout ? m_layout_height : m_height), 0.0f, -10000, 10000);
+ 
+ 	// https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
+ 	Rml::Matrix4f correction_matrix;
+--- a/Backends/RmlUi_Renderer_VK.h
++++ b/Backends/RmlUi_Renderer_VK.h
+@@ -38,6 +38,9 @@
+ 	void EndFrame();
+ 
+ 	void SetViewport(int width, int height);
++	/// Lays the interface out at width x height and draws it scaled to the swapchain, whose size the
++	/// surface may impose (a display plane's mode). Call it before SetViewport.
++	void SetLayoutSize(int width, int height);
+ 	bool IsSwapchainValid();
+ 	void RecreateSwapchain();
+ 
+@@ -497,6 +500,8 @@
+ 
+ 	int m_width;
+ 	int m_height;
++	int m_layout_width = 0;
++	int m_layout_height = 0;
+ 
+ 	uint32_t m_queue_index_present;
+ 	uint32_t m_queue_index_graphics;

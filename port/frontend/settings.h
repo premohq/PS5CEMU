@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // PS5Cemu: the launcher's settings, /data/ps5cemu/ps5cemu.json. Cemu's own settings stay in its
-// settings.xml; the launcher writes the few it manages (game folder, volume, overlay) into both.
+// settings.xml; the launcher writes the few it manages (game folder, volume, overlay, upscaling
+// filter) into both.
 
 #pragma once
 
@@ -13,7 +14,7 @@ namespace ps5settings
 	struct Launcher
 	{
 		std::string gamesFolder = "/data/ps5cemu/games";
-		bool output4k = true;		  // 3840x2160, else 1920x1080 (VideoOut scales it up)
+		int upscaleFilter = 1;		  // how the game's picture is scaled to 4K: Cemu's upscale_filter
 		bool highFrameRate = false;	  // the 119.88 Hz mode where the display has it
 		bool overlay = false;		  // Cemu's performance overlay from the start
 		bool rumble = true;

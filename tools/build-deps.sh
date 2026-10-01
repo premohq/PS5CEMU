@@ -3,7 +3,7 @@
 # Builds, for the PS5, the libraries Cemu needs that pacbrew does not provide, and installs
 # them into build/sysroot: Boost (filesystem, program_options, nowide and the headers),
 # pugixml, RapidJSON, libzip, glslang, CMake package files for pacbrew's header-only glm, and
-# compiler-rt's emulated TLS.
+# Clang's builtins from compiler-rt (emulated TLS, __cpu_model).
 # Each library is built once; delete build/sysroot/.stamps/<name> to rebuild one.
 
 set -euo pipefail
@@ -99,22 +99,26 @@ EOF
     mark_done glm
 fi
 
-if ! done_already compiler-rt; then
-    # -femulated-tls code calls __emutls_get_address, from Clang's builtins, which the host's Clang
-    # does not have for the PS5. emutls.c of the same LLVM release stands in for them, where
-    # PS5_Vulkan's link recipe (tools/radv-link.sh) looks for the builtins: the destructor rounds
-    # as ProsperoEden has them (one, for libc++abi's pthread-key fallback).
+if ! done_already compiler-rt-builtins; then
+    # Clang's builtins, which the host's Clang does not have for the PS5, from the same LLVM
+    # release, where PS5_Vulkan's link recipe (tools/radv-link.sh) looks for them:
+    # __emutls_get_address for -femulated-tls code (emutls.c; the destructor rounds as ProsperoEden
+    # has them, one, for libc++abi's pthread-key fallback) and __cpu_model for
+    # __builtin_cpu_supports, which RADV's address library calls (x86.c).
     rt=$deps/compiler-rt-18.1.8
     out=$PS5CEMU_SYSROOT/clang-rt/lib/linux
     mkdir -p "$out" "$work/compiler-rt"
     sed 's/#define EMUTLS_SKIP_DESTRUCTOR_ROUNDS 0/#define EMUTLS_SKIP_DESTRUCTOR_ROUNDS 1/' "$rt/emutls.c" \
         >"$work/compiler-rt/emutls.c"
-    clang-18 -target x86_64-sie-ps5 -isysroot "$PS5_PAYLOAD_SDK" -isystem "$PS5_PAYLOAD_SDK/target/include" \
-        -I "$rt" -O2 -fPIC -march=znver2 -fno-stack-protector -fno-plt -femulated-tls \
-        -c "$work/compiler-rt/emutls.c" -o "$work/compiler-rt/emutls.o"
+    for source in "$work/compiler-rt/emutls.c" "$rt/x86.c"; do
+        object=$work/compiler-rt/$(basename "$source" .c).o
+        clang-18 -target x86_64-sie-ps5 -isysroot "$PS5_PAYLOAD_SDK" -isystem "$PS5_PAYLOAD_SDK/target/include" \
+            -I "$rt" -O2 -fPIC -march=znver2 -fno-stack-protector -fno-plt -femulated-tls \
+            -c "$source" -o "$object"
+    done
     rm -f "$out/libclang_rt.builtins-x86_64.a"
-    llvm-ar-18 rcs "$out/libclang_rt.builtins-x86_64.a" "$work/compiler-rt/emutls.o"
-    mark_done compiler-rt
+    llvm-ar-18 rcs "$out/libclang_rt.builtins-x86_64.a" "$work/compiler-rt/emutls.o" "$work/compiler-rt/x86.o"
+    mark_done compiler-rt-builtins
 fi
 
 echo "==> [deps] all libraries are in $PS5CEMU_SYSROOT"

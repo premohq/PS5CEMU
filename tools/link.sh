@@ -54,9 +54,10 @@ if [[ -f $radv_archive && -f $radv_sdk/target/lib/libps5platform.a ]]; then
     # AGC comes from system modules; these link stubs only name the imports (as build-radv-title.sh)
     for stub in libSceAgc:agc_canary_link_stub libSceAgcDriver:agc_driver_canary_link_stub; do
         library=${stub%%:*} source=$vulkan/vendor/ps5/sdk/stubs/${stub#*:}.c
-        if [[ ! -f $work/$library.so || $source -nt $work/$library.so ]]; then
+        if [[ ! -f $work/$library.so || $source -nt $work/$library.so || ${BASH_SOURCE[0]} -nt $work/$library.so ]]; then
+            # exported as the PS5 target exports only with its dllstorageclass default
             clang-18 -target x86_64-sie-ps5 -isysroot "$sdk" -isystem "$sdk/target/include" -std=c11 -O2 -fPIC \
-                -c "$source" -o "$work/$library.o"
+                -fvisibility-nodllstorageclass=default -c "$source" -o "$work/$library.o"
             "$sdk/bin/prospero-lld" --shared -soname "$library.prx" -o "$work/$library.so" "$work/$library.o"
         fi
     done
@@ -105,12 +106,27 @@ done
 # RADV's platform layer has the real thread-local destructor registration; a link check has none
 ((check)) && absent+=(--defsym=__cxa_thread_atexit_impl=0)
 
-"$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr "${radv_link_flags[@]}" "${absent[@]}" \
+# The system modules a title imports from: all the SDK names, but the web process's (WebKit's POSIX
+# layer and its libkernel, which a title does not load; the SDK's libc.a below has what they would
+# have supplied, fnmatch) and the Mono runtime's.
+modules=()
+for module in "$sdk"/target/lib/*.so; do
+    case ${module##*/} in libScePosixForWebKit.so | libkernel_web.so | libmonosgen-2.0.so) ;; *) modules+=("$module") ;; esac
+done
+
+# Mesa's dispatch tables name every entry point weakly, and those nothing defines must read as null
+# rather than become imports, which the title converter would look for in the system modules: as
+# PS5_Vulkan links its titles (its tools/check-vulkan-runtime.sh), with no dynamic linker (LLD 18 then
+# leaves undefined weak symbols out of the dynamic symbol table) and, for later LLDs, explicitly.
+# RADV goes first: its archive, linked whole, has zlib built in (Mesa's subproject), which then
+# stands for the zlib pacbrew's libz.a would otherwise add a second time.
+"$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr --no-dynamic-linker -z nodynamic-undefined-weak \
+    "${radv_link_flags[@]}" "${absent[@]}" \
     --version-script "$vulkan/tooling/native/app-symbols.map" --exclude-libs=ALL --gc-sections \
     --error-limit=0 -Map="$output.map" -e _start -o "$output" \
     "$work/app_crt.o" "$work/app_cpp_runtime.o" \
-    --start-group "${inputs[@]}" "${radv_link_inputs[@]}" --end-group \
-    "${stubs[@]}" --as-needed "$sdk"/target/lib/*.so \
+    --start-group "${radv_link_inputs[@]}" "${inputs[@]}" --end-group \
+    "${stubs[@]}" --as-needed "${modules[@]}" \
     "$sdk/target/lib/libc.a" # what no module exports to a title and the platform layer does not bind (as ProsperoEden links)
 if ((check)); then
     touch "$output.linkcheck"

@@ -141,7 +141,7 @@
           <span class="detail-kicker">ON THIS CONSOLE</span>
           <span class="settings-detail-title">Make it yours.</span>
           <span class="settings-detail-copy">Adjust the essentials without leaving your library behind.</span>
-          <span class="settings-detail-label settings-detail-one">VIDEO</span><span class="settings-detail-value settings-detail-one">Output resolution, 120 Hz, overlay</span>
+          <span class="settings-detail-label settings-detail-one">VIDEO</span><span class="settings-detail-value settings-detail-one">Upscaling filter, 120 Hz, overlay</span>
           <span class="settings-detail-label settings-detail-two">AUDIO</span><span class="settings-detail-value settings-detail-two">Game volume</span>
           <span class="settings-detail-label settings-detail-three">CONTROLS</span><span class="settings-detail-value settings-detail-three">Shortcuts and vibration</span>
           <span class="settings-detail-label settings-detail-four">DIAGNOSTICS</span><span class="settings-detail-value settings-detail-four">Jailbreak, JIT and log files</span>
@@ -189,7 +189,7 @@
         <img class="dialog-panel-chrome" src="chrome/modal-panel.tga" width="820" height="720" alt=""/>
         <span class="dialog-title">Video</span>
         <span class="dialog-copy">Applies to the next game you start.</span>
-        <span id="video-row-0" class="dialog-row dialog-row-0"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="video-output">Output: 4K (3840x2160)</span></span>
+        <span id="video-row-0" class="dialog-row dialog-row-0"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="video-output">Upscaling to 4K: Bicubic</span></span>
         <span id="video-row-1" class="dialog-row dialog-row-1"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="video-hfr">120 Hz output: Off</span></span>
         <span id="video-row-2" class="dialog-row dialog-row-2"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="video-overlay">Performance overlay: Off</span></span>
         <span class="dialog-hint">UP / DOWN Select  /  X or LEFT / RIGHT Change  /  O Back</span>

@@ -22,7 +22,6 @@ help: ## List the targets
 	@echo
 	@echo 'Variables:'
 	@echo '  JOBS=$(JOBS)                parallel compile jobs'
-	@echo '  PS5_PAYLOAD_SDK_FORK=<dir>  the payload SDK fork RADV is built on (make radv)'
 	@echo '  RADV_ARCHIVE, RADV_SDK      a RADV built elsewhere, and the SDK fork it was built with'
 
 deps: ## Fetch the pinned inputs and build the libraries Cemu needs for the PS5
@@ -32,10 +31,10 @@ deps: ## Fetch the pinned inputs and build the libraries Cemu needs for the PS5
 deps-status: ## Show every dependency and whether it matches its pin
 	@python3 -B tools/deps.py status
 
-radv: deps ## Build RADV, the Vulkan driver, with PS5_Vulkan's recipe (needs PS5_PAYLOAD_SDK_FORK)
+radv: deps ## Build RADV, the Vulkan driver, with PS5_Vulkan's recipe
 	bash tools/build-radv.sh
 
-build: deps ## Build Cemu for the PS5 and link it with RADV: build/cemu/ps5cemu.elf
+build: deps $(if $(RADV_ARCHIVE),,radv) ## Build Cemu for the PS5 and link it with RADV: build/cemu/ps5cemu.elf
 	bash tools/build-cemu.sh
 
 check: deps ## Build and package everything with a stand-in for RADV, to check the build (not an app)

@@ -26,8 +26,8 @@ namespace ps5settings
 			return settings;
 		if (json.HasMember("gamesFolder") && json["gamesFolder"].IsString())
 			settings.gamesFolder = json["gamesFolder"].GetString();
-		if (json.HasMember("output4k") && json["output4k"].IsBool())
-			settings.output4k = json["output4k"].GetBool();
+		if (json.HasMember("upscaleFilter") && json["upscaleFilter"].IsInt())
+			settings.upscaleFilter = std::clamp(json["upscaleFilter"].GetInt(), 0, 3);
 		if (json.HasMember("highFrameRate") && json["highFrameRate"].IsBool())
 			settings.highFrameRate = json["highFrameRate"].GetBool();
 		if (json.HasMember("overlay") && json["overlay"].IsBool())
@@ -59,8 +59,8 @@ namespace ps5settings
 		writer.StartObject();
 		writer.Key("gamesFolder");
 		writer.String(settings.gamesFolder.c_str());
-		writer.Key("output4k");
-		writer.Bool(settings.output4k);
+		writer.Key("upscaleFilter");
+		writer.Int(settings.upscaleFilter);
 		writer.Key("highFrameRate");
 		writer.Bool(settings.highFrameRate);
 		writer.Key("overlay");

@@ -276,6 +276,7 @@ namespace ps5emu
 	{
 		auto& config = GetConfig();
 		config.tv_volume = std::clamp(options.volume, 0, 100);
+		config.upscale_filter = std::clamp(options.upscaleFilter, (int)kLinearFilter, (int)kNearestNeighborFilter);
 		config.overlay.position = options.overlay ? ScreenPosition::kTopLeft : ScreenPosition::kDisabled;
 		if (options.overlay)
 			config.overlay.fps = config.overlay.cpu_usage = config.overlay.ram_usage = true;
@@ -380,10 +381,8 @@ namespace ps5emu
 		// as VulkanCanvas: the renderer, then the surface for the main window
 		try
 		{
-			uint32_t width, height;
-			ps5display::OutputSize(width, height);
 			g_renderer = std::make_unique<VulkanRenderer>();
-			VulkanRenderer::GetInstance()->InitializeSurface({(sint32)width, (sint32)height}, true);
+			VulkanRenderer::GetInstance()->InitializeSurface({(sint32)ps5display::kWidth, (sint32)ps5display::kHeight}, true);
 		}
 		catch (const std::exception& ex)
 		{

@@ -9,11 +9,10 @@ emulator belongs to the Cemu team and its contributors. PS5Cemu is not affiliate
 by the Cemu project, Nintendo or Sony.
 
 > [!WARNING]
-> **Status: builds end to end, not yet run on a console.** Every part compiles and links for the
-> PS5, and the packaging produces a signed `eboot.bin` and the app folder. A release build also
-> needs RADV, which is built with the PS5 payload SDK fork's platform layer
-> ([Building](#building)). Nothing here has been tested on hardware yet. Expect the first console
-> runs to need fixes.
+> **Status: builds into a complete app, not yet run on a console.** `make release` builds RADV,
+> Cemu, the port and the launcher for the PS5 and packages a signed `eboot.bin` with everything
+> the app needs. Nothing here has been tested on hardware yet. Expect the first console runs to
+> need fixes.
 
 ## Features
 
@@ -26,7 +25,8 @@ by the Cemu project, Nintendo or Sony.
   and pick presets per game, as in Cemu's Graphic Packs window.
 - **Vulkan on RADV.**
   - Cemu's Vulkan renderer runs on a `VK_KHR_display` surface on VideoOut.
-  - Output is 4K, or 1080p scaled up to 4K.
+  - Output is VideoOut's 3840x2160. Cemu scales the game's picture to it with the upscaling filter
+    you choose (bicubic by default).
   - 120 Hz output on displays that take it.
 - **The recompiler.** Cemu's x64 recompiler runs when etaHEN jailbreaks the process, which grants
   JIT memory. Without that, Cemu falls back to its interpreter, which is much slower.
@@ -80,12 +80,16 @@ hardware and software you own.
 
 The build runs on Linux and needs:
 - `clang-18`, `lld-18` and the LLVM 18 tools;
-- `cmake`, `ninja`, `git`, `make` and `python3`.
+- `cmake`, `ninja`, `git`, `make` and `python3`;
+- for RADV: `meson`, Python's `mako`, `rsync`, and LLVM, Clang, libclc, SPIRV-Tools and the SPIR-V
+  translator for Mesa's OpenCL kernels. On Ubuntu 24.04: `pip install meson mako`, then
+  `apt install rsync flex llvm-18-dev libclang-18-dev libclc-18-dev libllvmspirvlib-18-dev
+  llvm-spirv-18 spirv-tools`.
 
 ```bash
-make check     # builds everything and packages it with a stand-in for RADV: checks the build
-make radv      # builds RADV (needs PS5_PAYLOAD_SDK_FORK, below)
+make radv      # builds RADV, the Vulkan driver
 make release   # build/app/PPSA99360 and dist/PS5Cemu-v0.1.0.zip
+make check     # the same build with a stand-in for RADV: checks everything else (not an app)
 ```
 
 `make help` lists every target. `make deps` fetches every input at the revision pinned in
@@ -95,16 +99,15 @@ pinned inputs:
 - the PS5 Native App Boilerplate (payload SDK, runtime, packaging tool)
 - pacbrew's prebuilt PS5 libraries
 - Boost, pugixml, libzip, glslang, RapidJSON, RmlUi
-- the PS5 Mesa fork and PS5_Vulkan
-- compiler-rt's emulated TLS
+- Mihawk-99's PS5_Mesa, PS5_Vulkan and payload SDK fork
+- compiler-rt's emulated TLS and CPU-model builtins
 - the community graphic packs
 - ProsperoEden
 
-**RADV.** The driver is built by PS5_Vulkan's own recipe from the pinned Mesa fork. Its PS5 winsys
-is built on the platform layer of the payload SDK fork (Mihawk-99's PS5_PayloadSDK), which the
-public SDK lacks. Set `PS5_PAYLOAD_SDK_FORK` to a checkout of it for `make radv`. Alternatively,
-point `RADV_ARCHIVE` and `RADV_SDK` at a RADV build made elsewhere and the SDK fork it was built
-with.
+**RADV.** `make radv` builds the driver with PS5_Vulkan's own recipe, from the pinned Mesa fork
+and the payload SDK fork, whose platform layer the PS5 winsys is built on. A RADV build made
+elsewhere can be used instead: point `RADV_ARCHIVE` and `RADV_SDK` at it and the SDK fork it was
+built with. The link follows PS5_Vulkan's recipe for titles (`tools/link.sh`).
 
 `make check` links with a driver stand-in instead of RADV. That proves everything else compiles,
 links and packages, but its output (`build/app-check`) is not an app.
@@ -137,7 +140,8 @@ by Alex Free. It is kept in this repository with its own readme and licence.
 - **ProsperoEden** by BlackBearReloaded: the launcher's design, artwork, fonts, bitmap font engine
   and folder browser, and the **PS5 Native App Boilerplate**: runtime, packaging tool, sandbox
   elevation.
-- **Mihawk-99** and **mpereiraesaa**: RADV on the PS5 (PS5_Mesa, PS5_Vulkan).
+- **Mihawk-99**: RADV on the PS5 (PS5_Mesa, PS5_Vulkan, the payload SDK fork), with
+  **mpereiraesaa**'s contributions.
 - **John Törnblom** (ps5-payload-dev): the PS5 payload SDK, and **pacbrew**'s PS5 libraries.
 - **Swordpdf**: PS5SX2's etaHEN jailbreak request, which PS5Cemu follows.
 - The authors of the **Cemu community graphic packs**.

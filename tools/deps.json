@@ -86,34 +86,45 @@
     },
     {
       "name": "ps5-mesa",
-      "about": "Mesa 26.2 fork with the PS5 RADV winsys and the VideoOut swapchain, at the revision PS5_Vulkan pins (tools/build-radv.sh builds it with PS5_Vulkan's recipe)",
+      "about": "Mihawk-99's Mesa 26.2 fork: RADV with the PS5 winsys and the VideoOut swapchain, at the revision PS5_Vulkan pins (tools/build-radv.sh builds it with PS5_Vulkan's recipe)",
       "kind": "git",
-      "url": "https://github.com/mpereiraesaa/PS5_Mesa.git",
-      "commit": "8177db7b8da35bfc20ba948e9e0de72068612a33",
+      "url": "https://github.com/mihawk-99/PS5_Mesa.git",
+      "commit": "0b2d6d1a61d9bbf89cf8beb88a696144f67c61f8",
       "path": ".deps/PS5_Mesa",
       "creates": ".deps/PS5_Mesa/src/amd/vulkan/winsys/ps5/radv_ps5_winsys.c"
     },
     {
       "name": "ps5-vulkan",
-      "about": "PS5_Vulkan: RADV's build and link recipe for titles (tools/build-radv.sh, tools/radv-link.sh), its linker script and the AGC link stubs",
+      "about": "Mihawk-99's PS5_Vulkan: RADV's build and link recipe for titles (tools/build-radv.sh, tools/radv-link.sh), its linker script and the AGC link stubs",
       "kind": "git",
-      "url": "https://github.com/mpereiraesaa/PS5_Vulkan.git",
-      "commit": "ac9388c393f0fd1ff9c5dc0c212c771b5fcde176",
+      "url": "https://github.com/mihawk-99/PS5_Vulkan.git",
+      "commit": "3f3ee69607013b345d2baa6d6a37c86745649a08",
       "path": ".deps/PS5_Vulkan",
       "creates": ".deps/PS5_Vulkan/tools/radv-link.sh"
     },
     {
+      "name": "ps5-payload-sdk-fork",
+      "about": "Mihawk-99's payload SDK fork with the PS5 platform layer RADV's winsys is built on, at the revision PS5_Vulkan pins",
+      "kind": "git",
+      "url": "https://github.com/mihawk-99/PS5_PayloadSDK.git",
+      "commit": "95c08f27386fc698f6bbe21dde3030140a41d10b",
+      "path": ".deps/PS5_PayloadSDK",
+      "creates": ".deps/PS5_PayloadSDK/platform/tools/setup-sdk.sh"
+    },
+    {
       "name": "compiler-rt",
-      "about": "LLVM 18.1.8 emulated-TLS runtime (emutls.c and its headers): the SDK compiles with -femulated-tls and the host has no compiler-rt builtins",
+      "about": "LLVM 18.1.8 builtins Clang's PS5 code calls and the host has no compiler-rt for: the emulated-TLS runtime (emutls.c, for -femulated-tls) and __cpu_model (x86.c, for __builtin_cpu_supports in RADV)",
       "kind": "files",
       "dest": ".deps/compiler-rt-18.1.8",
-      "creates": ".deps/compiler-rt-18.1.8/emutls.c",
+      "creates": ".deps/compiler-rt-18.1.8/x86.c",
       "files": [
         {"name": "emutls.c", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/emutls.c", "sha256": "a4437f3e329a0835adbc7df38e36df12f358d05c073b11813c409f849c2345d2"},
         {"name": "int_endianness.h", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/int_endianness.h", "sha256": "ec5175561075845b7b16a92ad5ecdfd42a284de2736dd07e4ca7011b75c37709"},
         {"name": "int_lib.h", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/int_lib.h", "sha256": "b31130f10484636895daa13b91b63d47ea82b45547f29e4dd136b48a67854d30"},
         {"name": "int_types.h", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/int_types.h", "sha256": "26517abcfb05e989f4ac18b38779bc118637e0a5b3e44536c3733cc47b33026e"},
-        {"name": "int_util.h", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/int_util.h", "sha256": "63d06198ab720a75c20bfd84be895c2746581b129168bae6201e7384bbb0473b"}
+        {"name": "int_util.h", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/int_util.h", "sha256": "63d06198ab720a75c20bfd84be895c2746581b129168bae6201e7384bbb0473b"},
+        {"name": "x86.c", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/cpu_model/x86.c", "sha256": "76e43483ff498d8849b933d04e63d9710bca1ae7624057a044bb117b6477aa51"},
+        {"name": "cpu_model.h", "url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-18.1.8/compiler-rt/lib/builtins/cpu_model/cpu_model.h", "sha256": "cfb51c855bbffc0216e21f64a0f792d0354a6f07e693c56564a309bbe2e17757"}
       ]
     },
     {

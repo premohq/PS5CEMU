@@ -33,7 +33,7 @@ namespace
 
 	ps5emu::Options Options(const ps5settings::Launcher& settings)
 	{
-		return {settings.gamesFolder, settings.overlay, settings.volume};
+		return {settings.gamesFolder, settings.overlay, settings.volume, settings.upscaleFilter};
 	}
 }
 
@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 
 	for (;;)
 	{
-		ps5display::SetOutput(1920, 1080, false); // the launcher's layout is 1920x1080
+		ps5display::SetHighFrameRate(false); // the launcher at 59.94 Hz
 		const auto game = ps5launcher::Run(settings, status);
 		if (!game)
 		{
@@ -95,7 +95,7 @@ int main(int argc, char* argv[])
 		}
 
 		ps5emu::ApplyOptions(Options(settings));
-		ps5display::SetOutput(settings.output4k ? 3840 : 1920, settings.output4k ? 2160 : 1080, settings.highFrameRate);
+		ps5display::SetHighFrameRate(settings.highFrameRate);
 		ps5window::Initialize();
 		if (ps5emu::LaunchGame(*game, error))
 		{
