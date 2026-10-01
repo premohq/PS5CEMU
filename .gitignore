@@ -1,1 +1,9 @@
-ps5mfr/logs/
+# the build: fetched inputs, outputs, release files
+.deps/
+build/
+dist/
+.local/
+__pycache__/
+
+# extras/ps5mfr writes a log of every run
+extras/ps5mfr/logs/
