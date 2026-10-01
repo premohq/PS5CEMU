@@ -1,0 +1,244 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Thu, 1 Oct 2026 06:23:44 +0000
+Subject: [PATCH] PS5: AudioOut, the DualSense provider and the interpreter
+ fallback
+
+The pieces of the port that Cemu's own classes have to know about:
+
+- IAudioAPI::PS5AudioOut, created from the port's PS5AudioAPI.
+- InputAPI::PS5Pad, the DualSense controller and its provider, the one
+  provider the PS5 build creates (no keyboard, no DSU client sockets).
+- ActiveSettings::GetCPUMode falls back to the interpreter when the
+  process has no JIT memory (PS5_JitAvailable: the HEN did not jailbreak it).
+- the port's cemu/ headers are on every target's include path, since
+  InputManager.h names the DualSense provider.
+---
+ CMakeLists.txt                  |  2 ++
+ src/audio/IAudioAPI.cpp         | 14 ++++++++++++++
+ src/audio/IAudioAPI.h           |  1 +
+ src/config/ActiveSettings.cpp   |  9 +++++++++
+ src/input/CMakeLists.txt        |  2 +-
+ src/input/ControllerFactory.cpp | 12 ++++++++++++
+ src/input/InputManager.cpp      |  7 +++++--
+ src/input/InputManager.h        |  4 ++++
+ src/input/api/InputAPI.h        |  6 ++++++
+ 9 files changed, 54 insertions(+), 3 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 542032e..2dd815b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -81,6 +81,8 @@ if (CEMU_PS5)
+ 		message(FATAL_ERROR "CEMU_PS5 needs CEMU_PS5_PORT_DIR (ps5cemu/port)")
+ 	endif()
+ 	add_compile_definitions(CEMU_PS5)
++	# the port's replacements for Cemu's platform classes (DualSense provider, AudioOut, recompiler bridge)
++	include_directories("${CEMU_PS5_PORT_DIR}/cemu")
+ endif()
+ 
+ # enable link time optimization for release builds
+diff --git a/src/audio/IAudioAPI.cpp b/src/audio/IAudioAPI.cpp
+index dc266ee..9a77e78 100644
+--- a/src/audio/IAudioAPI.cpp
++++ b/src/audio/IAudioAPI.cpp
+@@ -9,6 +9,9 @@
+ #if HAS_CUBEB
+ #include "CubebAPI.h"
+ #endif
++#if defined(CEMU_PS5)
++#include "PS5AudioAPI.h"
++#endif
+ 
+ std::shared_mutex g_audioMutex;
+ AudioAPIPtr g_tvAudio;
+@@ -87,6 +90,9 @@ void IAudioAPI::InitializeStatic()
+ #if HAS_CUBEB
+ 	s_availableApis[Cubeb] = CubebAPI::InitializeStatic();
+ #endif
++#if defined(CEMU_PS5)
++	s_availableApis[PS5AudioOut] = PS5AudioAPI::InitializeStatic();
++#endif
+ }
+ 
+ bool IAudioAPI::IsAudioAPIAvailable(AudioAPI api)
+@@ -163,6 +169,10 @@ AudioAPIPtr IAudioAPI::CreateDevice(AudioAPI api, const DeviceDescriptionPtr& de
+ 		const auto tmp = std::dynamic_pointer_cast<CubebAPI::CubebDeviceDescription>(device);
+ 		return std::make_unique<CubebAPI>(tmp->GetDeviceId(), samplerate, channels, samples_per_block, bits_per_sample);
+ 	}
++#endif
++#if defined(CEMU_PS5)
++	case PS5AudioOut:
++		return std::make_unique<PS5AudioAPI>(samplerate, channels, samples_per_block, bits_per_sample);
+ #endif
+ 	default:
+ 		throw std::runtime_error(fmt::format("invalid audio api: {}", api));
+@@ -195,6 +205,10 @@ std::vector<IAudioAPI::DeviceDescriptionPtr> IAudioAPI::GetDevices(AudioAPI api)
+ 	{
+ 		return CubebAPI::GetDevices();
+ 	}
++#endif
++#if defined(CEMU_PS5)
++	case PS5AudioOut:
++		return PS5AudioAPI::GetDevices();
+ #endif
+ 	default:
+ 		throw std::runtime_error(fmt::format("invalid audio api: {}", api));
+diff --git a/src/audio/IAudioAPI.h b/src/audio/IAudioAPI.h
+index 34df421..ddf9133 100644
+--- a/src/audio/IAudioAPI.h
++++ b/src/audio/IAudioAPI.h
+@@ -45,6 +45,7 @@ public:
+ 		XAudio27,
+ 		XAudio2,
+ 		Cubeb,
++		PS5AudioOut, // the PS5's AudioOut (ps5cemu/port/cemu/PS5AudioAPI.cpp)
+ 
+ 		AudioAPIEnd,
+ 	};
+diff --git a/src/config/ActiveSettings.cpp b/src/config/ActiveSettings.cpp
+index 08def5a..97dccce 100644
+--- a/src/config/ActiveSettings.cpp
++++ b/src/config/ActiveSettings.cpp
+@@ -64,9 +64,18 @@ bool ActiveSettings::DisplayDRCEnabled()
+ 	return g_current_game_profile->StartWithGamepadView();
+ }
+ 
++#if defined(CEMU_PS5)
++bool PS5_JitAvailable(); // ps5cemu/port/ps5/privilege.cpp
++#endif
++
+ CPUMode ActiveSettings::GetCPUMode()
+ {
+ 	auto mode = g_current_game_profile->GetCPUMode().value_or(CPUMode::Auto);
++#if defined(CEMU_PS5)
++	// the recompiler needs JIT memory, which the console grants only to a jailbroken process
++	if (!PS5_JitAvailable())
++		return CPUMode::SinglecoreInterpreter;
++#endif
+ 
+ 	if (mode == CPUMode::Auto)
+ 	{
+diff --git a/src/input/CMakeLists.txt b/src/input/CMakeLists.txt
+index 69c7041..cc68f7c 100644
+--- a/src/input/CMakeLists.txt
++++ b/src/input/CMakeLists.txt
+@@ -95,7 +95,7 @@ if(CEMU_PS5)
+ 		"${CEMU_PS5_PORT_DIR}/cemu/PS5PadControllerProvider.cpp"
+ 		"${CEMU_PS5_PORT_DIR}/cemu/PS5PadControllerProvider.h"
+ 	)
+-	target_include_directories(CemuInput PRIVATE "${CEMU_PS5_PORT_DIR}/cemu")
++	target_include_directories(CemuInput PUBLIC "${CEMU_PS5_PORT_DIR}/cemu")
+ endif()
+ 
+ if(ENABLE_SDL)
+diff --git a/src/input/ControllerFactory.cpp b/src/input/ControllerFactory.cpp
+index 3827e1d..8e72141 100644
+--- a/src/input/ControllerFactory.cpp
++++ b/src/input/ControllerFactory.cpp
+@@ -22,6 +22,10 @@
+ #include "input/api/SDL/SDLController.h"
+ #endif
+ 
++#if defined(CEMU_PS5)
++#include "PS5PadController.h" // ps5cemu/port/cemu
++#endif
++
+ ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::string_view uuid,
+                                                   std::string_view display_name)
+ {
+@@ -104,6 +108,10 @@ ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::strin
+ 			const auto index = ConvertString<uint32>(uuid);
+ 			return std::make_shared<NativeWiimoteController>(index);
+ 		}
++#endif
++#if defined(CEMU_PS5)
++	case InputAPI::PS5Pad:
++		return std::make_shared<PS5PadController>(uuid, display_name);
+ #endif
+ 	default:
+ 		throw std::invalid_argument(fmt::format("unhandled controller api: {}", api));
+@@ -175,6 +183,10 @@ ControllerProviderPtr ControllerFactory::CreateControllerProvider(InputAPI::Type
+ #if HAS_WIIMOTE
+ 	case InputAPI::Wiimote:
+ 		return std::make_shared<WiimoteControllerProvider>();
++#endif
++#if defined(CEMU_PS5)
++	case InputAPI::PS5Pad:
++		return std::make_shared<PS5PadControllerProvider>();
+ #endif
+ 	default:
+ 		cemu_assert_debug(false);
+diff --git a/src/input/InputManager.cpp b/src/input/InputManager.cpp
+index 42b1db2..a492742 100644
+--- a/src/input/InputManager.cpp
++++ b/src/input/InputManager.cpp
+@@ -25,7 +25,10 @@ InputManager::InputManager()
+ 		}
+ 	}
+ 	*/
+-#if HAS_KEYBOARD
++#if defined(CEMU_PS5)
++	create_provider<PS5PadControllerProvider>();
++#endif
++#if HAS_KEYBOARD && !defined(CEMU_PS5)
+ 	create_provider<KeyboardControllerProvider>();
+ #endif
+ #ifdef HAS_SDL
+@@ -37,7 +40,7 @@ InputManager::InputManager()
+ #if HAS_DIRECTINPUT
+ 	create_provider<DirectInputControllerProvider>();
+ #endif
+-#if HAS_DSU
++#if HAS_DSU && !defined(CEMU_PS5)
+ 	create_provider<DSUControllerProvider>();
+ #endif
+ #if defined(HAS_GAMECUBE) && HAS_GAMECUBE && defined(HAS_LIBUSB)
+diff --git a/src/input/InputManager.h b/src/input/InputManager.h
+index b510474..27e65ac 100644
+--- a/src/input/InputManager.h
++++ b/src/input/InputManager.h
+@@ -13,8 +13,12 @@
+ #include "input/api/SDL/SDLControllerProvider.h"
+ #endif
+ 
++#if defined(CEMU_PS5)
++#include "PS5PadControllerProvider.h" // ps5cemu/port/cemu: the DualSense
++#else
+ #include "input/api/Keyboard/KeyboardControllerProvider.h"
+ #include "input/api/DSU/DSUControllerProvider.h"
++#endif
+ #include "input/api/GameCube/GameCubeControllerProvider.h"
+ 
+ #include "input/emulated/VPADController.h"
+diff --git a/src/input/api/InputAPI.h b/src/input/api/InputAPI.h
+index a5f1f92..3ed48ea 100644
+--- a/src/input/api/InputAPI.h
++++ b/src/input/api/InputAPI.h
+@@ -17,6 +17,8 @@ namespace InputAPI
+ 		WGIGamepad,
+ 		WGIRawController,
+ 
++		PS5Pad, // the DualSense on the PS5 (ps5cemu/port/cemu/PS5PadController.cpp)
++
+ 		MAX
+ 	};
+ 
+@@ -42,6 +44,8 @@ namespace InputAPI
+ 			return "WGIRawController";
+ 		case SDLController:
+ 			return "SDLController";
++		case PS5Pad:
++			return "PS5Pad";
+ 		default:
+ 			break;
+ 		}
+@@ -65,6 +69,8 @@ namespace InputAPI
+ 			return DSUClient;
+ 		else if (str == to_string(SDLController))
+ 			return SDLController;
++		else if (str == to_string(PS5Pad))
++			return PS5Pad;
+ 		else if (str == "DSU") // legacy
+ 			return DSUClient;
+ 		
