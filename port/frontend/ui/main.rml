@@ -15,6 +15,7 @@
         <img id="brand-icon" src="icons/ps5cemu-72.tga" width="72" height="72" alt=""/>
         <span id="brand-name">PS5CEMU</span>
         <span id="brand-version">WII U  /  PS5 EDITION</span>
+        <span id="brand-version">WII U  /  PS5 EDITION  /  v0.2.0</span>
         <span id="menu-clock">--:--</span>
       </header>
       <nav id="menu">
@@ -287,6 +288,19 @@
         <span class="dialog-copy">The sound of your games; the PS5's own volume stays as it is.</span>
         <span id="audio-row-0" class="dialog-row dialog-row-0 focused"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span class="dialog-row-label">Game volume</span><span id="audio-volume" class="dialog-row-value">100%</span></span>
         <div class="dialog-hints"><span class="hint"><img src="icons/leftright-mono.tga" width="26" height="26" alt=""/><span class="hint-text">Change</span></span><span class="hint"><img src="icons/circle-mono.tga" width="26" height="26" alt=""/><span class="hint-text">Back</span></span></div>
+        <span class="dialog-copy">The TV sound of your games; the PS5's own volume is unchanged.</span>
+        <span id="audio-row-0" class="dialog-row dialog-row-0 focused"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="audio-volume">Game volume: 100%</span></span>
+        <span class="dialog-hint">LEFT / RIGHT Change  /  O Back</span>
+      </div></div>
+
+      <!-- Settings > Controls -->
+      <div id="controls-dialog" class="dialog"><div class="dialog-panel">
+        <img class="dialog-panel-chrome" src="chrome/modal-panel.tga" width="820" height="720" alt=""/>
+        <span class="dialog-title">Controls</span>
+        <span class="dialog-copy">Your DualSense is the Wii U GamePad; more players get Pro Controllers.</span>
+        <div class="settings-details">Touchpad: a cursor on the GamePad's screen; click to touch.<br/>Touchpad click + Options: the in-game menu.<br/>Touchpad click + L1: TV or GamePad as the main screen.<br/>Touchpad click + R1: the other screen in a corner.</div>
+        <span id="controls-row-0" class="dialog-row settings-low focused"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="controls-rumble">Vibration: On</span></span>
+        <span class="dialog-hint">X Change  /  O Back</span>
       </div></div>
 
       <!-- Settings > Diagnostics -->

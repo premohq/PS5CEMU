@@ -16,6 +16,10 @@ On a console with etaHEN, PS5Cemu starts into its launcher, lists your games and
 The Wind Waker HD plays: video, controller input and saves work. Compatibility and performance
 will vary between games. The latest release is
 **[v1.0.0](https://github.com/premohq/PS5CEMU/releases/tag/v1.0.0)**.
+This is an early alpha. On a console with etaHEN, PS5Cemu starts into its launcher, lists your
+games and starts them, and The Wind Waker HD plays: video, controller input and saves work.
+Compatibility and performance will vary between games. The latest release is
+**[v0.2.0](https://github.com/premohq/PS5CEMU/releases/tag/v0.2.0)**.
 
 ## Source code
 
@@ -67,6 +71,13 @@ build, packaging and artwork tools in `tools/`. To build it yourself, run `make 
 - **Updates and DLC** - **Settings > Install updates and DLC** installs a folder with code, content
   and meta into the Wii U's storage, as Cemu's "Install game title, update or DLC" does. Updates and
   DLC in the game files folder or in a WUA are found as they are.
+- **Launcher** - ProsperoEden's layout, artwork and fonts, adapted for Wii U games, on the Wii U
+  Homebrew Launcher's background: **Continue Playing**, **Recently Played**, and a **Library** with
+  each game's icon, version, update and DLC.
+- **Game files anywhere** - WUA, WUD/WUX and unpacked games in any folder the PS5 can read, chosen
+  with a folder browser in **Settings > Game files**.
+- **Graphic packs per game** - the community graphic packs are bundled. Turn them on or off and pick
+  their presets for each game, as in Cemu's Graphic Packs window.
 - **Both screens** - the TV's picture or the GamePad's as the main one, and the other one in a corner
   when you want it.
 - **The touchpad as the touch screen** - a cursor shows where your finger is on the GamePad's
@@ -76,6 +87,11 @@ build, packaging and artwork tools in `tools/`. To build it yourself, run `make 
 - **Text entry** - games that ask for text get Cemu's keyboard, typed with the D-pad or the touchpad.
 - **Controllers, audio and saves** - player 1's DualSense is the Wii U GamePad, and other signed-in
   users get Pro Controllers, up to four players, until you choose otherwise. Audio plays
+- **In-game menu** - the main screen, the screen in a corner, upscaling, the picture's shape, the
+  performance overlay, the volume, and back to the library.
+- **Text entry** - games that ask for text get Cemu's keyboard, typed with the D-pad or the touchpad.
+- **Controllers, audio and saves** - player 1's DualSense is the Wii U GamePad, with motion controls
+  and vibration, and other signed-in users get Pro Controllers, up to four players. Audio plays
   through the PS5's AudioOut, and saves stay in `/data/ps5cemu`.
 
 ## Install
@@ -105,6 +121,7 @@ Encrypted WUD and WUX dumps also need their disc keys in `/data/ps5cemu/keys.txt
 them. An update or DLC is found with its game when it is in the game files folder (unpacked, or in
 the game's WUA) or installed in the Wii U's storage (`mlc01`) with **Settings > Install updates and
 DLC**.
+them. Updates and DLC installed in the Wii U's storage (`mlc01`) are found with their game.
 
 ### App data
 
@@ -219,6 +236,8 @@ by Alex Free. It is kept in this repository with its own readme and licence.
 - **Dimok**: the Wii U Homebrew Launcher's background (homebrew_launcher and libgui, GPL-3.0), moving
   behind the launcher (`port/frontend/bubbles.cpp`), and drawn by `tools/render-background.py` for
   the home screen and this page.
+- **Dimok**: the Wii U Homebrew Launcher's background (homebrew_launcher and libgui, GPL-3.0), drawn
+  by `tools/render-background.py` for the launcher, the home screen and this page.
 - **Mihawk**: RADV on the PS5 (PS5_Mesa, PS5_Vulkan, the payload SDK fork), with **mpereiraesaa**'s
   contributions.
 - **John Törnblom** (ps5-payload-dev): the [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk),

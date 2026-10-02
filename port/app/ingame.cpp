@@ -164,6 +164,11 @@ namespace
 		ImFont* rowFont = ImGui_GetFont(24.0f * scale);
 		ImFont* smallFont = ImGui_GetFont(20.0f * scale);
 		if (!titleFont || !headFont || !rowFont || !smallFont)
+	void DrawMenu(float scale)
+	{
+		ImFont* titleFont = ImGui_GetFont(36.0f * scale);
+		ImFont* textFont = ImGui_GetFont(26.0f * scale);
+		if (!titleFont || !textFont)
 			return; // ready next frame
 		ImGuiIO& io = ImGui::GetIO();
 		auto& config = GetConfig();
@@ -296,6 +301,97 @@ namespace
 		}
 		ImGui::End();
 		ImGui::PopStyleColor();
+		ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, io.DisplaySize, IM_COL32(0, 0, 0, 140));
+		ImGui::SetNextWindowPos({io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f}, ImGuiCond_Always, {0.5f, 0.5f});
+		ImGui::SetNextWindowSize({760.0f * scale, 0.0f}, ImGuiCond_Always);
+		ImGui::SetNextWindowBgAlpha(0.94f);
+		ImGui::SetNextWindowFocus();
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {28.0f * scale, 24.0f * scale});
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {12.0f * scale, 10.0f * scale});
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, {16.0f * scale, 10.0f * scale});
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0f * scale);
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f * scale);
+		// its height fits the items (the size's 0)
+		constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
+		if (ImGui::Begin("PS5Cemu##InGameMenu", nullptr, kFlags))
+		{
+			if (ImGui::IsWindowAppearing())
+			{
+				ImGui::GetCurrentContext()->NavDisableHighlight = false; // Resume shows as selected
+				s_confirmLibrary = false;
+				s_gameName = CafeSystem::GetForegroundTitleName();
+			}
+			ImGui::PushFont(titleFont);
+			ImGui::TextUnformatted("PS5Cemu");
+			ImGui::PopFont();
+			ImGui::PushFont(textFont);
+			ImGui::TextDisabled("%s", s_gameName.c_str());
+			ImGui::Separator();
+
+			// An item: chosen with Cross, and a setting also changed with Left and Right. The IDs after
+			// ### stay the same when the values in the labels change, so the selection stays.
+			enum class Change { kNone, kChosen, kLeft, kRight };
+			auto item = [](const std::string& label, bool setting) {
+				if (ImGui::Button(label.c_str(), {-FLT_MIN, 0.0f}))
+					return Change::kChosen;
+				if (setting && ImGui::IsItemFocused())
+				{
+					if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft) || ImGui::IsKeyPressed(ImGuiKey_GamepadLStickLeft))
+						return Change::kLeft;
+					if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight) || ImGui::IsKeyPressed(ImGuiKey_GamepadLStickRight))
+						return Change::kRight;
+				}
+				return Change::kNone;
+			};
+
+			if (item("Back to the game###resume", false) != Change::kNone)
+				CloseMenu();
+			ImGui::SetItemDefaultFocus();
+
+			const bool gamePadMain = LatteGPUState.isDRCPrimary;
+			if (item(fmt::format("Main screen: {}###main", gamePadMain ? "GamePad" : "TV"), true) != Change::kNone)
+				ps5ingame::SwapScreens();
+			if (item(fmt::format("{} in a corner: {}###corner", gamePadMain ? "TV" : "GamePad", s_cornerScreen ? "On" : "Off"), true) != Change::kNone)
+				ps5ingame::ToggleCornerScreen();
+
+			static const char* kFilters[] = {"Bilinear", "Bicubic", "Bicubic Hermite", "Nearest neighbour"};
+			const int filter = std::clamp((int)config.upscale_filter, 0, 3);
+			if (const Change change = item(fmt::format("Upscaling: {}###upscaling", kFilters[filter]), true); change != Change::kNone)
+				config.upscale_filter = (filter + (change == Change::kLeft ? 3 : 1)) % 4;
+			const bool stretch = config.fullscreen_scaling == kStretch;
+			if (item(fmt::format("Picture: {}###scaling", stretch ? "Stretched to the screen" : "Its own shape"), true) != Change::kNone)
+				config.fullscreen_scaling = stretch ? kKeepAspectRatio : kStretch;
+			const bool overlay = config.overlay.position != ScreenPosition::kDisabled;
+			if (item(fmt::format("Performance overlay: {}###overlay", overlay ? "On" : "Off"), true) != Change::kNone)
+			{
+				config.overlay.position = overlay ? ScreenPosition::kDisabled : ScreenPosition::kTopLeft;
+				config.overlay.fps = config.overlay.cpu_usage = config.overlay.ram_usage = true;
+			}
+			// Left and Right by 10; Cross goes up by 10, and from 100 back to 0
+			switch (item(fmt::format("Volume: {}%###volume", config.tv_volume), true))
+			{
+			case Change::kChosen: SetVolume(config.tv_volume >= 100 ? 0 : config.tv_volume + 10); break;
+			case Change::kLeft: SetVolume(config.tv_volume - 10); break;
+			case Change::kRight: SetVolume(config.tv_volume + 10); break;
+			case Change::kNone: break;
+			}
+
+			if (item(s_confirmLibrary ? "Press Cross again: unsaved progress is lost###library" : "Back to the library###library", false) != Change::kNone)
+			{
+				if (s_confirmLibrary)
+					s_libraryRequested = true;
+				s_confirmLibrary = true;
+			}
+			if (!ImGui::IsItemFocused())
+				s_confirmLibrary = false;
+
+			ImGui::Separator();
+			ImGui::TextDisabled("Cross: choose    Left/Right: change    Circle: back to the game");
+			ImGui::TextDisabled("Touchpad + L1: main screen    Touchpad + R1: screen in a corner");
+			ImGui::PopFont();
+		}
+		ImGui::End();
+		ImGui::PopStyleVar(5);
 
 		// Circle or Options closes it, but not the press of Options that opened it
 		const bool settled = sceKernelGetProcessTime() - s_menuOpenedAt > 300000;
