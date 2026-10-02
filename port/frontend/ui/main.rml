@@ -15,7 +15,7 @@
       <header id="header">
         <img id="brand-icon" src="icons/ps5cemu-72.tga" width="72" height="72" alt=""/>
         <span id="brand-name">PS5CEMU</span>
-        <span id="brand-version">WII U  /  PS5 EDITION  /  v0.1.0</span>
+        <span id="brand-version">WII U  /  PS5 EDITION  /  v0.2.0</span>
         <span id="menu-clock">--:--</span>
       </header>
       <nav id="menu">
@@ -209,7 +209,7 @@
         <img class="dialog-panel-chrome" src="chrome/modal-panel.tga" width="820" height="720" alt=""/>
         <span class="dialog-title">Controls</span>
         <span class="dialog-copy">Your DualSense is the Wii U GamePad; more players get Pro Controllers.</span>
-        <div class="settings-details">Touchpad: the GamePad's touch screen.<br/>Touchpad click: swap the TV and GamePad pictures.<br/>Touchpad click + L1 (twice): back to the library.<br/>Touchpad click + R1: performance overlay.</div>
+        <div class="settings-details">Touchpad: a cursor on the GamePad's screen; click to touch.<br/>Touchpad click + Options: the in-game menu.<br/>Touchpad click + L1: TV or GamePad as the main screen.<br/>Touchpad click + R1: the other screen in a corner.</div>
         <span id="controls-row-0" class="dialog-row settings-low focused"><img class="dialog-row-chrome base-chrome" src="chrome/dialog-row-normal.tga" width="736" height="94" alt=""/><img class="dialog-row-chrome focused-chrome" src="chrome/dialog-row-focused.tga" width="736" height="94" alt=""/><span id="controls-rumble">Vibration: On</span></span>
         <span class="dialog-hint">X Change  /  O Back</span>
       </div></div>

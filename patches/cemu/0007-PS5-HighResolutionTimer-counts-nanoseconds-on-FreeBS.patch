@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 04:24:33 +0000
+Subject: [PATCH] PS5: HighResolutionTimer counts nanoseconds on FreeBSD
+
+now() reads CLOCK_MONOTONIC in nanoseconds, but the frequency came from
+clock_getres, which FreeBSD gives as 10^9 / the clock's frequency + 1
+nanoseconds. The PS5's is 81 ns, so every timer ran 81 times too fast:
+the emulated vsync, and through the TSC's frequency, measured against
+this timer, the PowerPC's time base. Games ran as fast as the display
+let them: The Wind Waker HD at 60 fps, twice its speed. The frequency
+is now 10^9, as on macOS.
+---
+ src/util/highresolutiontimer/HighResolutionTimer.cpp | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/util/highresolutiontimer/HighResolutionTimer.cpp b/src/util/highresolutiontimer/HighResolutionTimer.cpp
+index 6bb96a8..54fa4fb 100644
+--- a/src/util/highresolutiontimer/HighResolutionTimer.cpp
++++ b/src/util/highresolutiontimer/HighResolutionTimer.cpp
+@@ -34,9 +34,10 @@ uint64 HighResolutionTimer::m_freq = []() -> uint64 {
+ #elif BOOST_OS_MACOS
+ 	return 1000000000;
+ #elif BOOST_OS_BSD
+-	timespec pc;
+-	clock_getres(CLOCK_MONOTONIC, &pc);
+-	return (uint64)1000000000 / (uint64)pc.tv_nsec;
++	// now() counts nanoseconds, whatever the clock's resolution: FreeBSD's clock_getres gives
++	// that as 10^9 / the clock's frequency + 1 nanoseconds, so with a clock of 1 GHz or less
++	// every timer ran that many times too fast (81 on the PS5)
++	return 1000000000;
+ #else
+     timespec pc;
+     clock_getres(CLOCK_MONOTONIC_RAW, &pc);

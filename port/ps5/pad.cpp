@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pad.h"
+#include "kernel.h"
 #include "log.h"
 
 #include <algorithm>
@@ -59,7 +60,10 @@ namespace ps5pad
 			int32_t handle = -1;
 			float touchWidth = 1920, touchHeight = 1080;
 			uint32_t lastButtons = 0;
-			bool chordUsed = false; // the touchpad was clicked together with L1 or R1
+			// the touchpad's click: when it began, whether it made a shortcut or touched the
+			// GamePad's screen, and until when a short click's tap lasts
+			uint64_t clickedAt = 0, tapUntil = 0;
+			bool chordUsed = false, touched = false;
 		};
 
 		std::mutex s_mutex;
@@ -217,34 +221,42 @@ namespace ps5pad
 		scePadSetLightBar(s_slots[player].handle, &color);
 	}
 
-	uint32_t FilterShortcuts(int player, uint32_t buttons)
+	Filtered FilterShortcuts(int player, uint32_t buttons)
 	{
+		constexpr uint64_t kTouchDelayUs = 150000; // a shortcut's button within this is no touch
+		constexpr uint64_t kTapUs = 80000;		   // how long a shorter click touches, once released
+		const uint64_t now = sceKernelGetProcessTime();
 		std::lock_guard lock(s_mutex);
 		Slot& slot = s_slots[std::clamp(player, 0, kMaxPlayers - 1)];
 		const uint32_t previous = slot.lastButtons;
 		slot.lastButtons = buttons;
-		const bool touchHeld = buttons & kTouchPad;
 		auto pressed = [&](uint32_t mask) { return (buttons & mask) && !(previous & mask); };
-		if (touchHeld)
+		Filtered result{buttons & ~kTouchPad, false};
+		if (buttons & kTouchPad)
 		{
-			if (pressed(kL1))
+			if (!(previous & kTouchPad))
 			{
-				s_pendingShortcut = Shortcut::Menu;
+				slot.clickedAt = now;
+				slot.chordUsed = slot.touched = false;
+			}
+			const Shortcut shortcut = pressed(kOptions) ? Shortcut::Menu
+				: pressed(kL1)							? Shortcut::SwapScreens
+				: pressed(kR1)							? Shortcut::CornerScreen
+														: Shortcut::None;
+			if (shortcut != Shortcut::None)
+			{
+				s_pendingShortcut = shortcut;
 				slot.chordUsed = true;
 			}
-			else if (pressed(kR1))
-			{
-				s_pendingShortcut = Shortcut::Overlay;
-				slot.chordUsed = true;
-			}
-			// while the touchpad is held, L1 and R1 belong to the shortcuts
-			return buttons & ~(kTouchPad | kL1 | kR1);
+			result.buttons &= ~(kOptions | kL1 | kR1);
+			result.touch = !slot.chordUsed && now - slot.clickedAt >= kTouchDelayUs;
+			slot.touched |= result.touch;
 		}
-		if ((previous & kTouchPad) && !slot.chordUsed)
-			s_pendingShortcut = Shortcut::SwapScreens; // a click on its own, on release
-		if (previous & kTouchPad)
-			slot.chordUsed = false;
-		return buttons;
+		else if ((previous & kTouchPad) && !slot.chordUsed && !slot.touched)
+			slot.tapUntil = now + kTapUs;
+		if (now < slot.tapUntil)
+			result.touch = true;
+		return result;
 	}
 
 	Shortcut TakeShortcut()

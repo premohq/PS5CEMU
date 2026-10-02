@@ -1,0 +1,271 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 04:24:33 +0000
+Subject: [PATCH] PS5: the DualSense in Cemu's overlays, the other screen in a
+ corner
+
+The console has no mouse or keyboard, and Cemu's software keyboard is
+clicked with a mouse: ImGui reads gamepad navigation only from a backend
+that says it has a gamepad, which ImGui_UpdateWindowInformation does not.
+On the PS5 it calls PS5Cemu_ImGuiInput instead, which gives ImGui the
+DualSense, and the touchpad as the mouse while an overlay is up.
+
+The keyboard (swkbd.cpp) is drawn at the size it has at 1080p on the
+3840x2160 output, keeps the keyboard window focused for the D-pad unless
+the port's menu is up, keeps each key's ID when shift changes the layout,
+shows the first key as selected, takes Triangle as shift and says which
+button does what.
+
+The copy to the backbuffer can draw the screen not shown whole in the
+bottom right corner, from the scan buffer it was last copied from, when
+the port asks for it, and tells the port where the GamePad's picture is
+for the touchpad's cursor. The port's overlays (its menu, the cursor)
+are drawn after Cemu's.
+---
+ src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp | 64 ++++++++++++++++++++
+ src/Cafe/OS/libs/swkbd/swkbd.cpp             | 49 ++++++++++++---
+ src/imgui/imgui_extension.cpp                | 10 +++
+ 3 files changed, 115 insertions(+), 8 deletions(-)
+
+diff --git a/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp b/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
+index f1556f8..acf2ed1 100644
+--- a/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
++++ b/src/Cafe/HW/Latte/Core/LatteRenderTarget.cpp
+@@ -864,6 +864,54 @@ void LatteRenderTarget_getScreenImageArea(sint32* x, sint32* y, sint32* width, s
+ 		*fullHeight = h;
+ }
+ 
++#if defined(CEMU_PS5)
++// PS5Cemu (ps5cemu/port/app/ingame.cpp): whether the screen not shown whole goes in a corner, where
++// the GamePad's picture is (for the touchpad's cursor), and its overlays: the cursor and the menu
++bool PS5Cemu_SecondScreenInCorner(bool gamePadIsPrimary);
++void PS5Cemu_SetGamePadArea(bool visible, sint32 x, sint32 y, sint32 width, sint32 height);
++void PS5Cemu_RenderOverlay();
++
++// The PS5 has one screen. It shows the TV or the GamePad whole, and can show the other one in its
++// bottom right corner, from the scan buffer that screen was last copied from.
++struct PS5ScanBufferSource
++{
++	bool valid = false;
++	MPTR colorBufferPtr;
++	uint32 width, height, format, pitch, swizzle;
++	Latte::E_HWTILEMODE tilemode;
++};
++static PS5ScanBufferSource s_ps5ScanBufferSource[2]; // the TV's, the GamePad's
++static bool s_ps5GamePadIsPrimary = false;
++
++static void LatteRenderTarget_ps5DrawSecondScreen(sint32 imageX, sint32 imageY, sint32 imageWidth, sint32 imageHeight)
++{
++	if (s_ps5GamePadIsPrimary)
++		PS5Cemu_SetGamePadArea(true, imageX, imageY, imageWidth, imageHeight);
++	else
++		PS5Cemu_SetGamePadArea(false, 0, 0, 0, 0);
++	const PS5ScanBufferSource& source = s_ps5ScanBufferSource[s_ps5GamePadIsPrimary ? 0 : 1];
++	if (!source.valid || !PS5Cemu_SecondScreenInCorner(s_ps5GamePadIsPrimary))
++		return;
++	LatteTextureView* view = LatteTC_GetTextureSliceViewOrTryCreate(source.colorBufferPtr, MPTR_NULL, (Latte::E_GX2SURFFMT)source.format, source.tilemode, source.width, source.height, 1, source.pitch, source.swizzle, 0, 0, true);
++	if (!view)
++		return;
++	LatteTexture_UpdateDataToLatest(view->baseTexture);
++	LatteTC_MarkTextureStillInUse(view->baseTexture);
++	sint32 sourceWidth, sourceHeight;
++	view->baseTexture->GetEffectiveSize(sourceWidth, sourceHeight, 0);
++	int screenWidth, screenHeight;
++	WindowSystem::GetWindowPhysSize(screenWidth, screenHeight);
++	// 30% of the screen's width, a margin of 2.5% of its height
++	const sint32 width = screenWidth * 3 / 10;
++	const sint32 height = width * std::max(sourceHeight, 1) / std::max(sourceWidth, 1);
++	const sint32 margin = screenHeight / 40;
++	const sint32 x = screenWidth - width - margin, y = screenHeight - height - margin;
++	g_renderer->DrawBackbufferQuad(view, RendererOutputShader::s_copy_shader, true, x, y, width, height, false, false);
++	if (!s_ps5GamePadIsPrimary)
++		PS5Cemu_SetGamePadArea(true, x, y, width, height);
++}
++#endif
++
+ void LatteRenderTarget_copyToBackbuffer(LatteTextureView* textureView, bool isPadView)
+ {
+ 	// make sure texture is updated to latest data in cache
+@@ -964,12 +1012,20 @@ void LatteRenderTarget_copyToBackbuffer(LatteTextureView* textureView, bool isPa
+ 	}
+ 	cemu_assert(shader);
+ 	g_renderer->DrawBackbufferQuad(textureView, shader, filter==LatteTextureView::MagFilter::kLinear, imageX, imageY, imageWidth, imageHeight, isPadView, clearBackground);
++#if defined(CEMU_PS5)
++	if (!isPadView)
++		LatteRenderTarget_ps5DrawSecondScreen(imageX, imageY, imageWidth, imageHeight);
++#endif
+ 	g_renderer->HandleScreenshotRequest(textureView, isPadView);
+ 	if (!g_renderer->ImguiBegin(!isPadView))
+ 		return;
+ 	swkbd_render(!isPadView);
+ 	nn::erreula::render(!isPadView);
+ 	LatteOverlay_render(isPadView);
++#if defined(CEMU_PS5)
++	if (!isPadView)
++		PS5Cemu_RenderOverlay();
++#endif
+ 	g_renderer->ImguiEnd();
+ }
+ 
+@@ -1008,6 +1064,14 @@ void LatteRenderTarget_itHLECopyColorBufferToScanBuffer(MPTR colorBufferPtr, uin
+ 
+ 	bool showDRC = swkbd_hasKeyboardInputHook() == false && (isDRCPrimary ^ altScreenRequested);
+ 
++#if defined(CEMU_PS5)
++	for (int screen = 0; screen < 2; screen++)
++	{
++		if (renderTarget & (screen == 0 ? RENDER_TARGET_TV : RENDER_TARGET_DRC))
++			s_ps5ScanBufferSource[screen] = {true, colorBufferPtr, colorBufferWidth, colorBufferHeight, colorBufferFormat, colorBufferPitch, colorBufferSwizzle, colorBufferTilemode};
++	}
++	s_ps5GamePadIsPrimary = showDRC;
++#endif
+ 	if ((renderTarget & RENDER_TARGET_DRC) && g_renderer->IsPadWindowActive())
+ 		LatteRenderTarget_copyToBackbuffer(texView, true);
+ 	if (((renderTarget & RENDER_TARGET_TV) && !showDRC) || ((renderTarget & RENDER_TARGET_DRC) && showDRC))
+diff --git a/src/Cafe/OS/libs/swkbd/swkbd.cpp b/src/Cafe/OS/libs/swkbd/swkbd.cpp
+index 16b8d73..80c1455 100644
+--- a/src/Cafe/OS/libs/swkbd/swkbd.cpp
++++ b/src/Cafe/OS/libs/swkbd/swkbd.cpp
+@@ -5,6 +5,9 @@
+ 
+ #include <imgui.h>
+ #include "imgui/imgui_extension.h"
++#if defined(CEMU_PS5)
++#include <imgui_internal.h>
++#endif
+ #include "util/helpers/helpers.h"
+ #include "resource/IconsFontAwesome5.h"
+ 
+@@ -397,15 +400,33 @@ void SwkbdCalc(void* controllerInfo)
+ }
+ 
+ void swkbd_keyInput(uint32 keyCode);
++#if defined(CEMU_PS5)
++// PS5Cemu (ps5cemu/port/app/ingame.cpp): its in-game menu, which takes the controller over the
++// keyboard, and Triangle, which toggles shift
++bool PS5Cemu_MenuOpen();
++bool PS5Cemu_KeyboardShiftPressed();
++#endif
+ void swkbd_render(bool mainWindow)
+ {
+ 	// only render if active
+ 	if( swkbdInternalState == NULL || swkbdInternalState->isActive == false)
+ 		return;
+-	
++
+ 	auto& io = ImGui::GetIO();
+-	const auto font = ImGui_GetFont(48.0f);
+-	const auto textFont = ImGui_GetFont(24.0f);
++#if defined(CEMU_PS5)
++	// VideoOut is 3840x2160: the keyboard at the size it has on a 1080p screen. It is driven with
++	// the D-pad, and a key keeps its ID, so the highlight stays, when shift changes the layout.
++	const float uiScale = std::max(1.0f, io.DisplaySize.y / 1080.0f);
++	int keyIndex = 0;
++	auto keyLabel = [&keyIndex](const char* key) { return fmt::format("{}###swkbdKey{}", key, keyIndex++); };
++	if (!PS5Cemu_MenuOpen() && PS5Cemu_KeyboardShiftPressed())
++		swkbdInternalState->shiftActivated = !swkbdInternalState->shiftActivated;
++#else
++	const float uiScale = 1.0f;
++	auto keyLabel = [](const char* key) { return std::string(key); };
++#endif
++	const auto font = ImGui_GetFont(48.0f * uiScale);
++	const auto textFont = ImGui_GetFont(24.0f * uiScale);
+ 	if (!font || !textFont)
+ 		return;
+ 
+@@ -428,7 +449,7 @@ void swkbd_render(bool mainWindow)
+ 	const auto button_len = font->GetCharAdvance('W');
+ 	const float len = button_len * std::max(4, std::max(swkbdInternalState->maxTextLength, (sint32)swkbdInternalState->keyboardArg.receiverArg.stringBufSize));
+ 
+-	ImVec2 box_size = { std::min(io.DisplaySize.x * 0.9f, len + 90), 0 };
++	ImVec2 box_size = { std::min(io.DisplaySize.x * 0.9f, len + 90 * uiScale), 0 };
+ 	ImGui::SetNextWindowPos(position, ImGuiCond_Always, pivot);
+ 	ImGui::SetNextWindowSize(box_size, ImGuiCond_Always);
+ 	ImGui::SetNextWindowBgAlpha(0.9f);
+@@ -436,7 +457,7 @@ void swkbd_render(bool mainWindow)
+ 	if (ImGui::Begin("Keyboard Input", nullptr, kPopupFlags))
+ 	{
+ 		ImGui::Text("%s", _utf8WrapperPtr(ICON_FA_KEYBOARD));
+-		ImGui::SameLine(70);
++		ImGui::SameLine(70 * uiScale);
+ 		auto text = boost::nowide::narrow(fmt::format(L"{}", swkbdInternalState->formStringBuffer));
+ 
+ 		static std::chrono::steady_clock::time_point s_last_tick = tick_cached();
+@@ -456,7 +477,7 @@ void swkbd_render(bool mainWindow)
+ 		ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
+ 		ImGui::PopTextWrapPos();
+ 
+-		position.y += ImGui::GetWindowSize().y + 100.0f;
++		position.y += ImGui::GetWindowSize().y + 100.0f * uiScale;
+ 	}
+ 	ImGui::End();
+ 	ImGui::PopFont();
+@@ -466,8 +487,16 @@ void swkbd_render(bool mainWindow)
+ 	ImGui::SetNextWindowBgAlpha(0.9f);
+ 	ImGui::PushFont(textFont);
+ 
++#if defined(CEMU_PS5)
++	if (!PS5Cemu_MenuOpen())
++		ImGui::SetNextWindowFocus(); // for the D-pad
++#endif
+ 	if (ImGui::Begin(fmt::format("Software keyboard##SoftwareKeyboard{}",mainWindow).c_str(), nullptr, kPopupFlags))
+ 	{
++#if defined(CEMU_PS5)
++		if (ImGui::IsWindowAppearing())
++			ImGui::GetCurrentContext()->NavDisableHighlight = false; // the first key shows as selected
++#endif
+ 		if(swkbdInternalState->shiftActivated)
+ 		{
+ 			const char* keys[] =
+@@ -482,7 +511,7 @@ void swkbd_render(bool mainWindow)
+ 			{
+ 				if (*key != '\n')
+ 				{
+-					if (ImGui::Button(key, { *key == ' ' ? 537 : (button_len + 5), 0}))
++					if (ImGui::Button(keyLabel(key).c_str(), { *key == ' ' ? 537 * uiScale : (button_len + 5 * uiScale), 0}))
+ 					{
+ 						if (strcmp(key, _utf8WrapperPtr(ICON_FA_ARROW_CIRCLE_LEFT)) == 0)
+ 							swkbd_keyInput(8);
+@@ -514,7 +543,7 @@ void swkbd_render(bool mainWindow)
+ 			{
+ 				if (*key != '\n')
+ 				{
+-					if (ImGui::Button(key, { *key == ' ' ? 537 : (button_len + 5), 0 }))
++					if (ImGui::Button(keyLabel(key).c_str(), { *key == ' ' ? 537 * uiScale : (button_len + 5 * uiScale), 0 }))
+ 					{
+ 						if (strcmp(key, _utf8WrapperPtr(ICON_FA_ARROW_CIRCLE_LEFT)) == 0)
+ 							swkbd_keyInput(8);
+@@ -533,6 +562,10 @@ void swkbd_render(bool mainWindow)
+ 			}
+ 		}
+ 		ImGui::NewLine();
++#if defined(CEMU_PS5)
++		ImGui::TextUnformatted("D-pad: move    Cross: type    Circle: delete    Triangle: shift    Options: done");
++		ImGui::TextUnformatted("Touchpad: point, and click to type");
++#endif
+ 	}
+ 	ImGui::End();
+ 
+diff --git a/src/imgui/imgui_extension.cpp b/src/imgui/imgui_extension.cpp
+index eb0e31e..1e5917c 100644
+--- a/src/imgui/imgui_extension.cpp
++++ b/src/imgui/imgui_extension.cpp
+@@ -123,8 +123,18 @@ ImFont* ImGui_GetFont(float size)
+ 	return nullptr; // will create the font in next precache call
+ }
+ 
++#if defined(CEMU_PS5)
++// The console has no mouse or keyboard: PS5Cemu gives ImGui the DualSense instead, as a gamepad,
++// and its touchpad as the mouse while an overlay takes input (ps5cemu/port/app/ingame.cpp)
++void PS5Cemu_ImGuiInput();
++#endif
++
+ void ImGui_UpdateWindowInformation(bool mainWindow)
+ {
++#if defined(CEMU_PS5)
++	PS5Cemu_ImGuiInput();
++	return;
++#endif
+ 	static std::map<uint32, ImGuiKey> keyboard_mapping;
+ 	auto& windowInfo = WindowSystem::GetWindowInfo();
+ 	static uint32 current_key = 0;

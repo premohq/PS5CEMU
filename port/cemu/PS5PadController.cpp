@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PS5PadController.h"
+#include "../app/ingame.h"
 #include "../ps5/pad.h"
 
 namespace
@@ -36,7 +37,27 @@ ControllerState PS5PadController::raw_state()
 		return result;
 	}
 
-	const uint32 buttons = ps5pad::FilterShortcuts(m_player, data.buttons);
+	const ps5pad::Filtered filtered = ps5pad::FilterShortcuts(m_player, data.buttons);
+
+	// the touchpad as the GamePad's touch screen: the finger places the cursor, a click touches
+	const bool finger = data.touchCount > 0;
+	if (finger)
+	{
+		float width, height;
+		ps5pad::TouchResolution(m_player, width, height);
+		m_cursor = {std::clamp(data.touch[0].x / width, 0.0f, 1.0f), std::clamp(data.touch[0].y / height, 0.0f, 1.0f)};
+	}
+	if (m_player == 0)
+		ps5ingame::SetGamePadPointer(finger, m_cursor.x, m_cursor.y, filtered.touch);
+
+	// the menu and Cemu's keyboard take the controller while they are up
+	if (ps5ingame::OverlayTakesInput())
+	{
+		m_touching = false;
+		return result;
+	}
+
+	const uint32 buttons = filtered.buttons;
 	static constexpr std::pair<uint32, uint64> kButtons[] = {
 		{ps5pad::kCross, kCross}, {ps5pad::kCircle, kCircle}, {ps5pad::kSquare, kSquare}, {ps5pad::kTriangle, kTriangle},
 		{ps5pad::kCreate, kCreate}, {ps5pad::kOptions, kOptions}, {ps5pad::kL3, kL3}, {ps5pad::kR3, kR3},
@@ -50,15 +71,10 @@ ControllerState PS5PadController::raw_state()
 	result.rotation = {StickAxis(data.rightX), StickAxis(data.rightY)};
 	result.trigger = {data.l2 / 255.0f, data.r2 / 255.0f};
 
-	// the touchpad as the GamePad's touch screen
 	m_previousTouch = m_touch;
-	m_touching = data.touchCount > 0;
+	m_touching = filtered.touch;
 	if (m_touching)
-	{
-		float width, height;
-		ps5pad::TouchResolution(m_player, width, height);
-		m_touch = {std::clamp(data.touch[0].x / width, 0.0f, 1.0f), std::clamp(data.touch[0].y / height, 0.0f, 1.0f)};
-	}
+		m_touch = m_cursor;
 
 	// motion, in the axes and units Cemu's SDL gamepads use (acceleration in g, rotation in
 	// radians per second). The DualSense axes as libScePad reports them need checking on a console.

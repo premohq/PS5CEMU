@@ -6,7 +6,9 @@
 // MainWindow::FileLoad and VulkanCanvas; this file keeps their MPL-2.0 licence.
 
 #include "emulator.h"
+#include "ingame.h"
 #include "paths.h"
+#include "../frontend/settings.h"
 #include "../ps5/display.h"
 #include "../ps5/kernel.h"
 #include "../ps5/log.h"
@@ -35,9 +37,11 @@
 #include "util/crypto/aes128.h"
 
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
 
 extern "C" int32_t sceSystemServiceParamGetInt(int32_t paramId, int32_t* value);
+extern uint64 _rdtscFrequency; // Cafe/HW/Espresso/PPCTimer.cpp
 
 namespace ps5emu
 {
@@ -139,7 +143,7 @@ namespace ps5emu
 				config.console_language = SystemLanguage();
 				config.async_compile = true;
 				config.vsync = 1;
-				config.overlay.position = ScreenPosition::kDisabled; // touchpad + R1 shows it
+				config.overlay.position = ScreenPosition::kDisabled; // the in-game menu shows it
 				config.notification.position = ScreenPosition::kTopLeft;
 			}
 			if (config.game_paths.empty())
@@ -227,8 +231,18 @@ namespace ps5emu
 			}
 		}
 
-		bool s_menuArmed = false;
-		uint64_t s_menuArmedAt = 0;
+		// The menu's settings: Cemu's in settings.xml, and those the launcher also has in its file,
+		// which it writes into Cemu's when the next game starts (ApplyOptions).
+		void SaveInGameSettings()
+		{
+			auto& config = GetConfig();
+			GetConfigHandle().Save();
+			ps5settings::Launcher settings = ps5settings::Load();
+			settings.upscaleFilter = config.upscale_filter;
+			settings.overlay = config.overlay.position != ScreenPosition::kDisabled;
+			settings.volume = config.tv_volume;
+			ps5settings::Save(settings);
+		}
 	}
 
 	bool InitializeCore(std::string& error)
@@ -396,6 +410,11 @@ namespace ps5emu
 		CafeSystem::LaunchForegroundTitle();
 		ps5log::Line("[emu] {} is running ({})", CafeSystem::GetForegroundTitleName(),
 			ActiveSettings::GetCPUMode() == CPUMode::SinglecoreInterpreter ? "interpreter" : "recompiler");
+		// what the game's speed rests on: Cemu's timers count the monotonic clock's nanoseconds, and
+		// the PowerPC's time base is the TSC, measured against that clock at start
+		timespec resolution{};
+		clock_getres(CLOCK_MONOTONIC, &resolution);
+		ps5log::Line("[emu] clocks: monotonic resolution {} ns, TSC {:.2f} MHz", resolution.tv_nsec, _rdtscFrequency / 1e6);
 		return true;
 	}
 
@@ -406,36 +425,35 @@ namespace ps5emu
 
 	void RunGame()
 	{
+		ps5notify::Send("Touchpad + Options: the PS5Cemu menu (screens, picture, volume, library)");
 		uint64_t polls = 0;
 		for (;;)
 		{
 			sceKernelUsleep(16000);
 			if (++polls % 120 == 0)
 				ps5pad::Rescan(); // controllers joining or leaving, about every two seconds
-			const uint64_t now = sceKernelGetProcessTime();
-			if (s_menuArmed && now - s_menuArmedAt > 4000000)
-				s_menuArmed = false;
 			switch (ps5pad::TakeShortcut())
 			{
 			case ps5pad::Shortcut::Menu:
-				if (s_menuArmed)
-					return; // confirmed: back to the library
-				s_menuArmed = true;
-				s_menuArmedAt = now;
-				ps5notify::Send("Press touchpad + L1 again to go back to the library");
+				ps5ingame::ToggleMenu();
 				break;
-			case ps5pad::Shortcut::Overlay:
-			{
-				auto& overlay = GetConfig().overlay;
-				overlay.position = overlay.position == ScreenPosition::kDisabled ? ScreenPosition::kTopLeft : ScreenPosition::kDisabled;
-				overlay.fps = overlay.cpu_usage = overlay.ram_usage = true;
-				break;
-			}
 			case ps5pad::Shortcut::SwapScreens:
-				LatteGPUState.isDRCPrimary = !LatteGPUState.isDRCPrimary;
+				ps5ingame::SwapScreens();
+				ps5log::Line("[ingame] main screen: {}", LatteGPUState.isDRCPrimary ? "GamePad" : "TV");
+				break;
+			case ps5pad::Shortcut::CornerScreen:
+				ps5ingame::ToggleCornerScreen();
+				ps5log::Line("[ingame] the other screen in a corner: toggled");
 				break;
 			case ps5pad::Shortcut::None:
 				break;
+			}
+			if (ps5ingame::TakeSaveRequest())
+				SaveInGameSettings();
+			if (ps5ingame::TakeLibraryRequest())
+			{
+				SaveInGameSettings();
+				return;
 			}
 		}
 	}

@@ -2,136 +2,183 @@
   <img src="docs/banner.svg" alt="PS5Cemu: Cemu, the Wii U emulator, on PlayStation 5 homebrew" width="100%">
 </p>
 
-# PS5Cemu
+<p align="center">
+  <strong>An unofficial Cemu port for PlayStation 5 homebrew</strong><br>
+  <a href="#features">Features</a> · <a href="#install">Install</a> · <a href="#in-game-controls">Controls</a> ·
+  <a href="docs/BUILDING.md">Building</a> · <a href="#credits">Credits</a>
+</p>
 
-**An unofficial port of [Cemu](https://github.com/cemu-project/Cemu), the Wii U emulator, to PlayStation 5 homebrew.**
+**PS5Cemu is an unofficial PlayStation 5 port of [Cemu](https://github.com/cemu-project/Cemu)**, the
+Wii U emulator. All credit for the emulator belongs to the Cemu team and its contributors. PS5Cemu
+is not affiliated with or endorsed by the Cemu project, Nintendo or Sony.
 
-PS5Cemu runs Cemu natively on a jailbroken PS5. It renders through Vulkan on the console's GPU with
-RADV, Mesa's AMD Vulkan driver, running on a PS5 winsys. It starts into a launcher built from
-[ProsperoEden](https://github.com/blackbearreloaded/ProsperoEden)'s design. All credit for the
-emulator belongs to the Cemu team and its contributors. PS5Cemu is not affiliated with or endorsed
-by the Cemu project, Nintendo or Sony.
+This is an early alpha. On a console with etaHEN, PS5Cemu starts into its launcher, lists your
+games and starts them, and The Wind Waker HD plays: video, controller input and saves work.
+Compatibility and performance will vary between games. The latest release is
+**[v0.2.0](https://github.com/premohq/PS5CEMU/releases/tag/v0.2.0)**.
 
-> [!WARNING]
-> **Status: the launcher runs on a console and starts games; none has been played yet.**
-> `make release` builds RADV, Cemu, the port and the launcher for the PS5 and packages a signed
-> `eboot.bin` with everything the app needs. On a console with etaHEN, PS5Cemu starts into the
-> launcher, lists the games it can read and starts them: The Wind Waker HD loads and its threads
-> run. Playing a game is still untested: expect it to need fixes.
+## Source code
+
+The complete PS5Cemu source is in this repository: the console layer, Cemu's platform code, the
+launcher and the in-game menu in `port/`, the port's changes to Cemu in `patches/cemu/`, and the
+build, packaging and artwork tools in `tools/`. To build it yourself, run `make release` on Linux
+(Ubuntu 24.04; WSL works). It fetches every dependency at its pinned revision and writes the app to
+`build/app/PPSA99360` and its ZIP to `dist/`; `make help` lists the other targets. See
+[docs/BUILDING.md](docs/BUILDING.md).
+
+## Project foundation
+
+> [!IMPORTANT]
+> **The emulator is [Cemu](https://github.com/cemu-project/Cemu).**
+> Its core, x64 recompiler and Vulkan renderer run natively on the console. The port's changes to
+> Cemu's own files are in `patches/cemu/`.
+
+> [!IMPORTANT]
+> **Vulkan is powered by Mihawk's [PS5 Mesa](https://github.com/mihawk-99/PS5_Mesa) and [PS5 Vulkan](https://github.com/mihawk-99/PS5_Vulkan).**
+> Mihawk's Mesa/RADV driver for the PS5 runs Cemu's Vulkan renderer. Many thanks to Mihawk for this
+> work and for [all of the PS5 projects](https://github.com/mihawk-99) behind it.
+
+> [!IMPORTANT]
+> **Built on BlackBearReloaded's [PS5 Native App Boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) and [ProsperoEden](https://github.com/blackbearreloaded/ProsperoEden).**
+> The boilerplate provides the native app's runtime, packaging and sandbox elevation, and
+> ProsperoEden the launcher's design, artwork, fonts and software drawing.
+
+> [!IMPORTANT]
+> **Dressed in the [Wii U Homebrew Launcher](https://github.com/dimok789/homebrew_launcher)'s blue, by Dimok.**
+> Its background is behind the launcher, on the PS5's home screen and at the top of this page.
 
 ## Features
 
-- **Launcher.** ProsperoEden's layout, artwork and fonts, adapted for Wii U games and driven by the
-  DualSense:
-  - **Continue Playing** and **Recently Played**, with each game's own icon.
-  - **Library:** title ID, version, update and DLC for each game.
-  - **Settings:** video, audio, controls, diagnostics, and a folder browser for the game files.
-- **Graphic packs per game.** The community graphic packs are bundled, and you turn them on or off
-  and pick presets per game, as in Cemu's Graphic Packs window.
-- **Vulkan on RADV.**
-  - Cemu's Vulkan renderer runs on a `VK_KHR_display` surface on VideoOut.
-  - Output is VideoOut's 3840x2160. Cemu scales the game's picture to it with the upscaling filter
-    you choose (bicubic by default).
-  - 120 Hz output on displays that take it.
-- **The recompiler.** Cemu's x64 recompiler runs when etaHEN jailbreaks the process, which grants
-  JIT memory. Without that, Cemu falls back to its interpreter, which is much slower.
-- **DualSense.**
-  - Player 1's controller is the Wii U GamePad. Other signed-in users get Pro Controllers, up to
-    four players.
-  - The touchpad is the GamePad's touch screen.
-  - Motion sensors and vibration work.
-- **Audio** through AudioOut. Surround is mixed down to stereo.
-
-### In-game shortcuts
-
-| Shortcut | Action |
-|---|---|
-| Touchpad click | Swap the TV and GamePad pictures |
-| Touchpad click + R1 | Performance overlay |
-| Touchpad click + L1, twice | Back to the library (PS5Cemu restarts) |
+- **Native Cemu** - Cemu's x64 recompiler runs with the JIT memory etaHEN grants. Without it, games
+  fall back to Cemu's interpreter, which is much slower.
+- **Vulkan renderer** - Cemu's Vulkan renderer on Mihawk's RADV driver, at the console's 3840x2160
+  output with the upscaling filter you choose (Bicubic by default), and 120 Hz on displays that take it.
+- **Launcher** - ProsperoEden's layout, artwork and fonts, adapted for Wii U games, on the Wii U
+  Homebrew Launcher's background: **Continue Playing**, **Recently Played**, and a **Library** with
+  each game's icon, version, update and DLC.
+- **Game files anywhere** - WUA, WUD/WUX and unpacked games in any folder the PS5 can read, chosen
+  with a folder browser in **Settings > Game files**.
+- **Graphic packs per game** - the community graphic packs are bundled. Turn them on or off and pick
+  their presets for each game, as in Cemu's Graphic Packs window.
+- **Both screens** - the TV's picture or the GamePad's as the main one, and the other one in a corner
+  when you want it.
+- **The touchpad as the touch screen** - a cursor shows where your finger is on the GamePad's
+  picture. Click to touch, and keep it clicked to drag.
+- **In-game menu** - the main screen, the screen in a corner, upscaling, the picture's shape, the
+  performance overlay, the volume, and back to the library.
+- **Text entry** - games that ask for text get Cemu's keyboard, typed with the D-pad or the touchpad.
+- **Controllers, audio and saves** - player 1's DualSense is the Wii U GamePad, with motion controls
+  and vibration, and other signed-in users get Pro Controllers, up to four players. Audio plays
+  through the PS5's AudioOut, and saves stay in `/data/ps5cemu`.
 
 ## Install
 
-1. Build the app (below), or take a release ZIP. Copy its `PPSA99360` folder to
-   `/data/homebrew/PPSA99360` on the console.
-2. Load **etaHEN** and add `PPSA99360` to its app jailbreak list. This gives PS5Cemu `/data` and
-   JIT memory. If the HEN doesn't jailbreak it, PS5Cemu asks elfldr to run its bundled
+1. Download the release ZIP and extract it, or build it yourself ([docs/BUILDING.md](docs/BUILDING.md)).
+2. Copy the included `PPSA99360` folder to `/data/homebrew/PPSA99360` on the PS5.
+3. Load **etaHEN** and add `PPSA99360` to its app jailbreak list. This gives PS5Cemu `/data` and JIT
+   memory. If the HEN does not jailbreak it, PS5Cemu asks elfldr to run its bundled
    `sandbox-elevator.elf`, which grants `/data` only, so games run on the interpreter.
-3. Put your own Wii U game dumps in `/data/ps5cemu/games`, or choose another folder in
-   **Settings > Game files**.
-   - Accepted: `.wua`, `.wud`/`.wux`, and folders with `code`, `content` and `meta`.
-   - Encrypted `.wud`/`.wux` dumps also need their disc keys in `/data/ps5cemu/keys.txt`.
+4. Put your own Wii U game dumps in `/data/ps5cemu/games`, or in any folder the PS5 can read and
+   select it in **Settings > Game files**.
+5. Launch **PS5Cemu** and open the **Library**.
 
-PS5Cemu keeps everything it writes in `/data/ps5cemu`:
+### Game files
+
+```text
+<game files folder>/                # /data/ps5cemu/games by default
+├── Game.wua                        # a Wii U archive: the game, its update and DLC in one file
+├── Game.wux                        # or Game.wud
+└── Game/                           # an unpacked game
+    ├── code/
+    ├── content/
+    └── meta/
+```
+
+Encrypted WUD and WUX dumps also need their disc keys in `/data/ps5cemu/keys.txt`, as Cemu reads
+them. Updates and DLC installed in the Wii U's storage (`mlc01`) are found with their game.
+
+### App data
+
+PS5Cemu keeps everything it writes in `/data/ps5cemu`, separately from the game files:
 
 ```text
 /data/ps5cemu/
-├── settings.xml, ps5cemu.json   Cemu's settings and the launcher's
-├── controllerProfiles/          controller profiles
-├── mlc01/                       the Wii U's storage: installed games, updates, DLC, saves
-├── games/                       the default game files folder
-├── keys.txt                     disc keys for encrypted dumps
-├── graphicPacks/                community packs (downloadedGraphicPacks/) and your own
-├── cache/                       shader and pipeline caches
-├── covers/                      game icons for the launcher
-├── log.txt                      Cemu's log
-└── logs/boot.log                PS5Cemu's log (boot.prev.log: the session before)
+├── settings.xml, ps5cemu.json      Cemu's settings and the launcher's
+├── controllerProfiles/             controller profiles
+├── mlc01/                          the Wii U's storage: installed updates and DLC, saves
+├── games/                          the default game files folder
+├── keys.txt                        disc keys for encrypted dumps
+├── graphicPacks/                   community packs (downloadedGraphicPacks/) and your own
+├── cache/                          shader and pipeline caches
+├── covers/                         game icons for the launcher
+├── log.txt                         Cemu's log
+└── logs/boot.log                   PS5Cemu's log (boot.prev.log: the session before)
 ```
+
+**Saves from Cemu on a PC.** Copy a game's save folder from your PC's
+`mlc01/usr/save/00050000/<title ID>/user/<account>` to
+`/data/ps5cemu/mlc01/usr/save/00050000/<title ID>/user/80000001`, PS5Cemu's account, while that
+game is not running.
+
+**Updating.** Copy a new release's `PPSA99360` folder over the old one; your data in
+`/data/ps5cemu` stays. To see a new home screen tile or background, refresh PS5Cemu in the loader
+that registered it.
 
 PS5Cemu includes no games, keys, firmware or other copyrighted console data. Dump them from
-hardware and software you own.
+hardware and software you own. Do not download or redistribute them.
 
-## Building
+## In-game controls
 
-The build runs on Linux and needs:
-- `clang-18`, `lld-18` and the LLVM 18 tools;
-- `cmake`, `ninja`, `git`, `make` and `python3`;
-- for RADV: `meson`, Python's `mako` and `packaging`, `rsync`, `glslangValidator`, and LLVM, Clang,
-  libclc, SPIRV-Tools and the SPIR-V translator for Mesa's OpenCL kernels. On Ubuntu 24.04:
-  `pip install meson mako packaging`, then `apt install rsync flex glslang-tools llvm-18-dev
-  libclang-18-dev libclc-18-dev libllvmspirvlib-18-dev llvm-spirv-18 spirv-tools`.
-
-```bash
-make radv      # builds RADV, the Vulkan driver
-make release   # build/app/PPSA99360 and dist/PS5Cemu-v0.1.0.zip
-make check     # the same build with a stand-in for RADV: checks everything else (not an app)
-```
-
-`make help` lists every target. `make deps` fetches every input at the revision pinned in
-`tools/deps.json`, then builds the libraries Cemu needs for the PS5 into `build/sysroot`. The
-pinned inputs:
-- Cemu
-- the PS5 Native App Boilerplate (payload SDK, runtime, packaging tool)
-- pacbrew's prebuilt PS5 libraries
-- Boost, pugixml, libzip, glslang, RapidJSON
-- Mihawk-99's PS5_Mesa, PS5_Vulkan and payload SDK fork
-- compiler-rt's emulated TLS and CPU-model builtins
-- the community graphic packs
-- ProsperoEden
-
-**RADV.** `make radv` builds the driver with PS5_Vulkan's own recipe, from the pinned Mesa fork
-and the payload SDK fork, whose platform layer the PS5 winsys is built on. A RADV build made
-elsewhere can be used instead: point `RADV_ARCHIVE` and `RADV_SDK` at it and the SDK fork it was
-built with. The link follows PS5_Vulkan's recipe for titles (`tools/link.sh`).
-
-`make check` links with a driver stand-in instead of RADV. That proves everything else compiles,
-links and packages, but its output (`build/app-check`) is not an app.
-
-### How it fits together
-
-| Path | What it is |
+| Control | Action |
 |---|---|
-| `port/ps5/` | The console layer: the DualSense, VideoOut through Vulkan, logging, notifications, sandbox escape and JIT |
-| `port/cemu/` | Cemu's platform classes for the PS5: memory mapper, fibers, AudioOut, the DualSense controller, and a Microsoft-ABI bridge for the recompiler, since the PS5 target has no `ms_abi` |
-| `port/app/` | Cemu's start-up without wxWidgets, the game list, game icons, graphic packs |
-| `port/frontend/` | The launcher: RmlUi drawn in software and shown on VideoOut through SDL, as ProsperoEden does |
-| `port/main_ps5.cpp` | The entry point: sandbox escape, logs, Cemu's core, the launcher, the game |
-| `patches/cemu/` | The port's changes to Cemu's own files (`tools/cemu-patches.sh apply` or `export`) |
-| `tools/` | Dependencies, the builds, the PS5 link (`link.sh`) and the packaging (`package.sh`) |
-| `sce_sys/` | The title's `param.json`. The icons are drawn by `tools/render-icons.py` |
+| Touchpad | A cursor on the GamePad's screen: click to touch, keep it clicked to drag |
+| Touchpad click + Options | The PS5Cemu menu |
+| Touchpad click + L1 | The TV or the GamePad as the main screen |
+| Touchpad click + R1 | The other screen in a corner, or not |
 
-To change Cemu, edit `.deps/Cemu` on its `ps5` branch, commit there, then run
-`tools/cemu-patches.sh export`.
+In the menu, the D-pad moves, Cross chooses, Left and Right change a setting, and Circle goes back
+to the game. On Cemu's keyboard, the D-pad moves, Cross types, Circle deletes, Triangle is shift
+and Options is done. On both, the touchpad points and clicks.
+
+## Changes in v0.2.0
+
+- **Games run at their own speed.** Cemu took the console clock's 81 ns resolution for the unit of
+  its timers, so they ran 81 times too fast, and games ran as fast as the display let them: The
+  Wind Waker HD at 60 fps, twice its speed.
+- **The GamePad's screen.** Make it the main picture, or show it in a corner of the TV's, from the
+  in-game menu or with the touchpad shortcuts.
+- **A cursor for the touch screen.** The touchpad moves a cursor over the GamePad's picture and
+  touches where you click, instead of touching wherever a finger rests.
+- **In-game menu.** Touchpad + Options opens it. Going back to the library moved there from
+  touchpad + L1 (twice), and the performance overlay from touchpad + R1.
+- **Cemu's keyboard works.** Games that ask for text, such as for a name, can be typed into with the
+  D-pad and Cross or the touchpad, at a size that suits the 4K output.
+- **The PS5's home screen.** The tile and the background behind PS5Cemu when it is selected use the
+  Wii U Homebrew Launcher's blue, with the app's GamePad and name.
+
+## Changes in v0.1.0
+
+- **PS5Cemu starts on a console.** Two crashes before the launcher appeared are fixed: Vulkan
+  functions the PS5's driver gives out only for an instance, and an app folder that is not `/app0`
+  once etaHEN jailbreaks the app.
+- **The launcher shows.** It draws in software through SDL, as ProsperoEden does, and lists your
+  games.
+- **Games start.** Cemu's renderer asks the driver's instance for its device extensions, and a fiber
+  switch that went back to a stale stack frame, which crashed The Wind Waker HD a moment after it
+  started, is fixed.
+- **Crash reports.** `log.txt` names where a crashed thread stopped.
+- **The Wii U Homebrew Launcher's background**, darkened, replaces the launcher's palm trees.
+
+## Roadmap
+
+- **Pause from the in-game menu** - the game keeps running behind the menu for now.
+- **Graphic packs during a game** - change packs and presets without going back to the library.
+- **Back to the library without a restart** - leaving a game starts PS5Cemu over, since Cemu cannot
+  yet end a game and start another in one process.
+- **Motion controls checked on a console** - the DualSense's gyro and accelerometer axes, as games
+  expect the GamePad's.
+- **More game compatibility** - try more games on the console, and fix what keeps them from running
+  well.
 
 ## Extras
 
@@ -141,23 +188,38 @@ by Alex Free. It is kept in this repository with its own readme and licence.
 ## Credits
 
 - **Cemu**, by the Cemu team and contributors (MPL-2.0).
-- **ProsperoEden** by BlackBearReloaded: the launcher's design, artwork, fonts, bitmap font
-  engine, folder browser and software drawing through SDL, and the **PS5 Native App
-  Boilerplate**: runtime, packaging tool, sandbox elevation.
-- **Dimok**: the Wii U Homebrew Launcher's background (homebrew_launcher and libgui, GPL-3.0), which
-  the launcher draws behind ProsperoEden's layout (`tools/render-background.py`).
-- **Mihawk-99**: RADV on the PS5 (PS5_Mesa, PS5_Vulkan, the payload SDK fork), with
-  **mpereiraesaa**'s contributions.
-- **John Törnblom** (ps5-payload-dev): the PS5 payload SDK, and **pacbrew**'s PS5 libraries.
+- **ProsperoEden** by BlackBearReloaded: the launcher's design, artwork, fonts, bitmap font engine,
+  folder browser and software drawing through SDL, and the **PS5 Native App Boilerplate**: runtime,
+  packaging tool, sandbox elevation and the home screen's asset format.
+- **Dimok**: the Wii U Homebrew Launcher's background (homebrew_launcher and libgui, GPL-3.0), drawn
+  by `tools/render-background.py` for the launcher, the home screen and this page.
+- **Mihawk**: RADV on the PS5 (PS5_Mesa, PS5_Vulkan, the payload SDK fork), with **mpereiraesaa**'s
+  contributions.
+- **John Törnblom** (ps5-payload-dev): the [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk),
+  and **pacbrew**'s PS5 libraries.
 - **Swordpdf**: PS5SX2's etaHEN jailbreak request, which PS5Cemu follows.
-- The authors of the **Cemu community graphic packs**.
+- The authors of the **[Cemu community graphic packs](https://github.com/cemu-project/cemu_graphic_packs)**.
 
 ## License
 
-PS5Cemu's own code is GPL-3.0-or-later ([LICENSE](LICENSE)). Files derived from Cemu keep Cemu's
-MPL-2.0, as their headers say, and third-party components keep their own licences.
+PS5Cemu's own code is licensed under GPL-3.0-or-later; see [LICENSE](LICENSE). Files derived from
+Cemu keep Cemu's MPL-2.0, as their headers say, and third-party components keep their own licences.
 
-**Disclaimer.** This is an independent homebrew project, provided as is, without warranty.
-"PlayStation" and "PS5" are trademarks of Sony Interactive Entertainment, and "Wii U" is a
-trademark of Nintendo. Running homebrew requires a modified console, which may void its warranty
-or breach the platform's terms of service. Use it only with hardware and software you own.
+## Disclaimer
+
+- **No affiliation.** This is an independent homebrew project. It is not affiliated with, endorsed
+  by, or sponsored by Sony Interactive Entertainment, Nintendo or the Cemu project. "PlayStation"
+  and "PS5" are trademarks of Sony Interactive Entertainment Inc., and "Wii U" is a trademark of
+  Nintendo.
+- **No proprietary material.** No Sony or Nintendo SDK, firmware, encryption keys, games or
+  decrypted system modules are included.
+- **No warranty.** This project is provided "as is", without warranty of any kind, to the extent
+  permitted by law. See sections 15 and 16 of the GPL.
+- **Use at your own risk.** Running homebrew requires a modified console, which may void its
+  warranty, breach the platform's terms of service, or cause data loss.
+- **Legal use only.** Use it only with hardware, accounts and content you own. This project does
+  not support or enable piracy.
+
+## AI assistance
+
+This project was developed with AI assistance from Anthropic's Claude.

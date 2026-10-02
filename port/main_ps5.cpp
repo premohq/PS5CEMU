@@ -4,8 +4,8 @@
 //  1. out of the sandbox: /data, and JIT memory for the recompiler (ps5/privilege.h);
 //  2. the boot log, the DualSense and Cemu's core (settings, MLC, graphic packs, the game scan);
 //  3. the launcher, until a game is chosen;
-//  4. the game, on Cemu's Vulkan renderer, until touchpad + L1 (twice) asks for the library, which
-//     starts PS5Cemu over (app/emulator.h, RestartToLibrary).
+//  4. the game, on Cemu's Vulkan renderer, until the in-game menu (touchpad + Options) asks for the
+//     library, which starts PS5Cemu over (app/emulator.h, RestartToLibrary).
 
 #include "app/emulator.h"
 #include "app/paths.h"

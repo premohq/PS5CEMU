@@ -5,24 +5,61 @@
     render-icons.py OUTPUT_DIR
 
 writes sce_sys/icon0.png (512x512, opaque: the console's tile) and the launcher's
-ui/icons/ps5cemu.tga (336x336) and ui/icons/ps5cemu-72.tga, in ProsperoEden's
-palette: a Wii U GamePad on a dark green tile. Shapes are signed distance
-functions, so every size is drawn sharp, and edges are anti-aliased over a pixel.
+ui/icons/ps5cemu.tga (336x336) and ui/icons/ps5cemu-72.tga: a Wii U GamePad, in the
+README banner's palette (tools/render-banner.py), on the Wii U Homebrew Launcher's
+background (tools/render-background.py: its gradient and discs, from the middle
+720x720 of its 1280x720 screen, under the banner's dark overlay). Shapes are
+signed distance functions, so every size is drawn sharp, and edges are
+anti-aliased over a pixel.
 """
 
+import importlib.util
 import math
 import os
 import struct
 import sys
 import zlib
 
-BACKGROUND_TOP = (0x17, 0x3a, 0x31)
-BACKGROUND_BOTTOM = (0x05, 0x0d, 0x0b)
-BODY = (0xf0, 0xf5, 0xf2)
-SCREEN_TOP = (0x1d, 0x4a, 0x3c)
-SCREEN_BOTTOM = (0x0b, 0x1c, 0x17)
-ACCENT = (0xa9, 0xdb, 0x63)
-DETAIL = (0x5f, 0x6e, 0x66)
+BODY = (0xf4, 0xf8, 0xfc)
+SCREEN_TOP = (0x1e, 0x4f, 0x7a)
+SCREEN_BOTTOM = (0x0b, 0x1e, 0x33)
+ACCENT = (0x9f, 0xd6, 0xff)
+DETAIL = (0x6a, 0x7e, 0x93)
+OVERLAY = 0.35  # as the banner's
+
+
+def load_background():
+    spec = importlib.util.spec_from_file_location(
+        "render_background", os.path.join(os.path.dirname(os.path.abspath(__file__)), "render-background.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def background(size):
+    """The tile's background, rows of RGB: the launcher's middle 720x720, scaled to size."""
+    hbl = load_background()
+    rows = []
+    for y in range(size):
+        t = (y + 0.5) / size
+        rows.append([[hbl.TOP[i] + (hbl.BOTTOM[i] - hbl.TOP[i]) * t for i in range(3)] for _ in range(size)])
+    scale = size / 720.0
+    for x, y, radius, alpha in hbl.particles():
+        cx, cy, r = (x * 1280 - 280) * scale, y * 720 * scale, radius * 1280 * scale
+        if r < 0.5 or cx + r < 0 or cx - r > size:
+            continue
+        for py in range(max(0, int(cy - r - 1)), min(size, int(cy + r + 2))):
+            for px in range(max(0, int(cx - r - 1)), min(size, int(cx + r + 2))):
+                a = alpha * min(max(r - math.hypot(px + 0.5 - cx, py + 0.5 - cy) + 0.5, 0.0), 1.0)
+                if a > 0.0:
+                    pixel = rows[py][px]
+                    for c in range(3):
+                        pixel[c] += (255 - pixel[c]) * a
+    for row in rows:
+        for pixel in row:
+            for c in range(3):
+                pixel[c] *= 1.0 - OVERLAY
+    return rows
 
 
 def rounded_box(x, y, cx, cy, half_w, half_h, radius):
@@ -46,16 +83,12 @@ def mix(a, b, t):
     return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
 
 
-def shade(u, v, pixel, rounded):
-    """Colour and alpha at (u, v) in the unit square."""
-    # the tile: a vertical gradient with a faint accent glow behind the GamePad, its corners
-    # rounded in the launcher (the console rounds icon0.png's itself)
+def shade(u, v, pixel, rounded, colour):
+    """Colour and alpha at (u, v) in the unit square, over the background's colour there."""
+    # the tile's corners are rounded in the launcher (the console rounds icon0.png's itself)
     alpha = coverage(rounded_box(u, v, 0.5, 0.5, 0.5, 0.5, 0.11), pixel) if rounded else 1.0
     if alpha <= 0.0:
         return (0, 0, 0), 0.0
-    colour = mix(BACKGROUND_TOP, BACKGROUND_BOTTOM, v)
-    glow = max(0.0, 1.0 - math.hypot(u - 0.5, (v - 0.52) * 1.6) / 0.48)
-    colour = mix(colour, ACCENT, 0.16 * glow * glow)
 
     # the GamePad's body
     body = rounded_box(u, v, 0.5, 0.53, 0.40, 0.205, 0.085)
@@ -85,12 +118,13 @@ def shade(u, v, pixel, rounded):
 
 def render(size, rounded=True):
     pixel = 1.0 / size
+    tile = background(size)
     rows = []
     for y in range(size):
         row = []
         v = (y + 0.5) / size
         for x in range(size):
-            colour, alpha = shade((x + 0.5) / size, v, pixel, rounded)
+            colour, alpha = shade((x + 0.5) / size, v, pixel, rounded, tile[y][x])
             row.append(tuple(int(round(max(0, min(255, c)))) for c in colour) + (int(round(alpha * 255)),))
         rows.append(row)
     return rows

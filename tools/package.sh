@@ -5,7 +5,8 @@
 #
 #   build/app/PPSA99360/              copied to /data/homebrew/PPSA99360 on the console
 #     eboot.bin                       the ELF, converted and fake-signed by ps5-native-tool
-#     sce_sys/param.json, icon0.png
+#     sce_sys/param.json, icon0.png   the title's parameters and home screen tile
+#     sce_sys/pic0.dds, pic1.dds      its home screen background (selected, starting)
 #     sce_module/libc.prx             the boilerplate's clean-room runtime
 #     sandbox-elevator.elf            the boilerplate's /data helper, built for PPSA99360
 #     assets/ui/                      the launcher: ProsperoEden's artwork and fonts, port/frontend/ui,
@@ -66,6 +67,11 @@ mkdir -p "$app/sce_sys" "$app/sce_module" "$app/assets"
 cp "$boilerplate/runtime/libc.prx" "$app/sce_module/libc.prx"
 python3 -B "$PS5CEMU_ROOT/tools/render-icons.py" "$work/icons"
 cp "$PS5CEMU_ROOT/sce_sys/param.json" "$work/icons/sce_sys/icon0.png" "$app/sce_sys/"
+# the home screen's background while PS5Cemu is selected and while it starts: one picture
+# (tools/render-presentation.py renders sce_sys/pic0.dds), in the form the boilerplate checks
+cp "$PS5CEMU_ROOT/sce_sys/pic0.dds" "$app/sce_sys/pic0.dds"
+cp "$PS5CEMU_ROOT/sce_sys/pic0.dds" "$app/sce_sys/pic1.dds"
+bash "$boilerplate/tools/validate-assets.sh" "$app/sce_sys" >/dev/null
 
 # The /data helper elfldr runs when the HEN does not jailbreak PS5Cemu (port/ps5/privilege.h).
 # It serves one title only: the boilerplate's, made PS5Cemu's.

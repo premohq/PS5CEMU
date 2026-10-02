@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // PS5Cemu: Cemu's WindowSystem on the PS5. There is one window, the TV, at VideoOut's 3840x2160
-// (display.h); no separate GamePad window (the touchpad click swaps the TV and GamePad pictures);
-// no keyboard. Error dialogs go to the boot log, a system notification and the launcher.
+// (display.h); no separate GamePad window (the GamePad's picture can be the main one, or go in a
+// corner: app/ingame.h); no keyboard. Error dialogs go to the boot log, a system notification and the launcher.
 
 #include "WindowSystem.h"
 #include "window.h"

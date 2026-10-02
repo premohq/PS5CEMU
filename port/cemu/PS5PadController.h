@@ -2,8 +2,9 @@
 // PS5Cemu: a DualSense as a Cemu controller.
 //
 // Buttons are numbered as below; the sticks are the axis (left) and rotation (right), and the
-// analog L2/R2 the trigger. The touchpad is the GamePad's touch screen (a position while a
-// finger rests on it), and the motion sensors feed Cemu's motion handler like an SDL gamepad's.
+// analog L2/R2 the trigger. The touchpad is the GamePad's touch screen: a finger moves a cursor
+// over it (app/ingame.h draws it), and a click touches it there, or drags while held. The motion
+// sensors feed Cemu's motion handler like an SDL gamepad's.
 
 #pragma once
 
@@ -70,5 +71,6 @@ private:
 	uint64 m_lastMotionTimestamp = 0;
 
 	bool m_touching = false;
+	glm::vec2 m_cursor{0.5f, 0.5f}; // where the finger last was on the touchpad
 	glm::vec2 m_touch{}, m_previousTouch{};
 };

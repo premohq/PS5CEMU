@@ -85,20 +85,27 @@ namespace ps5pad
 	void SetVibrationEnabled(bool enabled);
 	void SetLightBar(int player, uint8_t r, uint8_t g, uint8_t b);
 
-	// The port's shortcuts, the same from every controller (masked from the game while held):
-	//   touchpad click + L1: the in-game menu (back to the library)
-	//   touchpad click + R1: the performance overlay
-	//   touchpad click on its own: swap the TV and GamePad pictures
+	// The port's shortcuts, the same from every controller: the touchpad clicked, then
+	//   Options: the in-game menu (app/ingame.h)
+	//   L1: the TV or the GamePad as the main screen
+	//   R1: the other screen in a corner, or not
+	// While the touchpad is clicked, Options, L1 and R1 are the shortcuts', not the game's.
 	enum class Shortcut
 	{
 		None,
 		Menu,
-		Overlay,
 		SwapScreens,
+		CornerScreen,
 	};
-	// Feeds a controller's buttons through the shortcut detector; returns the buttons the game
-	// should see.
-	uint32_t FilterShortcuts(int player, uint32_t buttons);
+	struct Filtered
+	{
+		uint32_t buttons; // what the game sees
+		bool touch;		  // the touchpad clicked to touch the GamePad's screen
+	};
+	// Feeds a controller's sample through the shortcut detector. A click touches once it has lasted
+	// a moment with no shortcut (whose buttons usually follow at once), or as a tap on its release
+	// when it was shorter.
+	Filtered FilterShortcuts(int player, uint32_t buttons);
 	// The next shortcut pressed since the last call (or None).
 	Shortcut TakeShortcut();
 }
