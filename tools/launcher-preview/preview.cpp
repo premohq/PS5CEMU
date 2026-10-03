@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // PS5Cemu: the launcher on a PC, to see its layout without a console (tools/preview-launcher.sh).
 //
-// The launcher's own code (port/frontend: launcher.cpp, settings.cpp, bubbles.cpp, and
-// ProsperoEden's bitmap fonts) runs on RmlUi built for the PC, and draws in software here as SDL
-// draws it on the console: textures modulated by RmlUi's vertex colours and blended without
-// premultiplying, on whole pixels. In place of Cemu and the console it has sample games, graphic
-// packs and controllers; a script presses the DualSense's buttons and saves frames as PNGs.
+// The launcher's own code (port/frontend: launcher.cpp, settings.cpp, bubbles.cpp, wave.cpp,
+// ProsperoEden's bitmap fonts; port/azahar's library and controls) runs on RmlUi built for the PC,
+// and draws in software here as SDL draws it on the console: textures modulated by RmlUi's vertex
+// colours and blended without premultiplying, on whole pixels. In place of Cemu and the console it
+// has sample Wii U games, graphic packs and controllers; the 3DS games are files the script makes
+// (tools/launcher-preview/make-3ds-samples.py), read by Azahar's side's own library. A script
+// presses the DualSense's buttons and saves frames as PNGs.
 //
-//   launcher-preview UI_FOLDER OUTPUT_FOLDER SCRIPT GAMES_FOLDER
+//   launcher-preview UI_FOLDER OUTPUT_FOLDER SCRIPT GAMES_FOLDER 3DS_GAMES_FOLDER
 //
 // The script has one command a line ('#' starts a comment):
 //   press BUTTON...  each button down for 3 frames, then up for 3, one after another
@@ -18,9 +20,11 @@
 // Buttons: up down left right cross circle square triangle l1 r1 l2 r2 l3 r3 options create
 // touchpad, and the sticks: ls-up ls-down ls-left ls-right rs-up rs-down rs-left rs-right.
 
+#include "app/boxart.h"
 #include "app/emulator.h"
 #include "frontend/bubbles.h"
 #include "frontend/launcher.h"
+#include "frontend/wave.h"
 #include "frontend/settings.h"
 #include "frontend/ui_host.h"
 #include "ps5/kernel.h"
@@ -220,29 +224,53 @@ namespace
 		size_t Tell(Rml::FileHandle file) override { return (size_t)std::ftell(reinterpret_cast<std::FILE*>(file)); }
 	};
 
-	void DrawBackground(ps5ui::Bubbles& bubbles)
+	// The background in the columns from left to right: as ui_host.cpp draws it.
+	void DrawBubbles(ps5ui::Bubbles& bubbles, int left, int right)
 	{
 		static const std::vector<uint8_t> gradient = ps5ui::Bubbles::Gradient();
 		static std::map<int, std::vector<uint8_t>> discs;
-		bubbles.Advance(1.0 / 60.0);
-		s_frame = gradient;
+		for (int y = 0; y < kHeight; y++)
+			std::copy(&gradient[((size_t)y * kWidth + left) * 4], &gradient[((size_t)y * kWidth + right) * 4], &s_frame[((size_t)y * kWidth + left) * 4]);
 		for (const auto& bubble : bubbles.List())
 		{
 			auto& disc = discs[bubble.radius];
 			if (disc.empty())
 				disc = ps5ui::Bubbles::Disc(bubble.radius);
 			const int size = ps5ui::Bubbles::DiscSize(bubble.radius);
-			const int left = (int)std::lround(bubble.x) - size / 2, top = (int)std::lround(bubble.y) - size / 2;
+			const int bubbleLeft = (int)std::lround(bubble.x) - size / 2, top = (int)std::lround(bubble.y) - size / 2;
 			for (int y = 0; y < size; y++)
 				for (int x = 0; x < size; x++)
 				{
-					const int fx = left + x, fy = top + y;
-					if (fx < 0 || fy < 0 || fx >= kWidth || fy >= kHeight)
+					const int fx = bubbleLeft + x, fy = top + y;
+					if (fx < left || fy < 0 || fx >= right || fy >= kHeight)
 						continue;
 					const float alpha = bubble.alpha * disc[(size_t)y * size + x] / 255.0f;
 					const uint8_t* colour = ps5ui::Bubbles::kColour;
 					if (alpha > 0.0f)
 						Blend(&s_frame[((size_t)fy * kWidth + fx) * 4], colour[0], colour[1], colour[2], alpha);
+				}
+		}
+	}
+
+	void DrawWave(const ps5ui::Wave& wave, int left, int right)
+	{
+		static const std::vector<uint8_t> gradient = ps5ui::Wave::Gradient();
+		static std::vector<std::vector<uint8_t>> pictures;
+		if (pictures.empty())
+			for (int layer = 0; layer < ps5ui::Wave::kLayers; layer++)
+				pictures.push_back(ps5ui::Wave::Picture(layer));
+		for (int y = 0; y < kHeight; y++)
+			std::copy(&gradient[((size_t)y * kWidth + left) * 4], &gradient[((size_t)y * kWidth + right) * 4], &s_frame[((size_t)y * kWidth + left) * 4]);
+		for (int layer = 0; layer < ps5ui::Wave::kLayers; layer++)
+		{
+			const auto& info = ps5ui::Wave::LayerOf(layer);
+			const int width = ps5ui::Wave::PictureWidth(layer), offset = wave.Offset(layer);
+			for (int y = 0; y < info.height; y++)
+				for (int x = left; x < right; x++)
+				{
+					const uint8_t* p = &pictures[layer][((size_t)y * width + offset + x) * 4];
+					if (p[3])
+						Blend(&s_frame[((size_t)(info.top + y) * kWidth + x) * 4], p[0], p[1], p[2], p[3] / 255.0f);
 				}
 		}
 	}
@@ -414,8 +442,10 @@ namespace
 		BitmapFontEngine fonts;
 		Renderer render;
 		ps5ui::Bubbles bubbles;
+		ps5ui::Wave wave;
+		ps5ui::Scene scene = ps5ui::Scene::Both;
 		Rml::Context* context = nullptr;
-		Rml::ElementDocument* document = nullptr;
+		std::map<std::string, Rml::ElementDocument*> documents;
 	};
 	Host* s_host = nullptr;
 }
@@ -441,22 +471,38 @@ namespace ps5ui
 				return false;
 			}
 		s_host->context = Rml::CreateContext("preview", {kWidth, kHeight});
-		s_host->document = s_host->context->LoadDocument(AssetPath("main.rml"));
-		if (!s_host->document)
-		{
-			error = "main.rml did not load";
-			return false;
-		}
-		s_host->document->Show();
 		return true;
 	}
 
-	Rml::ElementDocument* Document() { return s_host->document; }
+	Rml::ElementDocument* Show(const std::string& name)
+	{
+		auto it = s_host->documents.find(name);
+		if (it == s_host->documents.end())
+		{
+			Rml::ElementDocument* document = s_host->context->LoadDocument(AssetPath(name));
+			if (!document)
+				return nullptr;
+			it = s_host->documents.emplace(name, document).first;
+		}
+		for (auto& [other, document] : s_host->documents)
+			if (other != name)
+				document->Hide();
+		it->second->Show();
+		return it->second;
+	}
+
+	void SetScene(Scene scene) { s_host->scene = scene; }
 
 	void Frame()
 	{
 		s_host->context->Update();
-		DrawBackground(s_host->bubbles);
+		s_host->bubbles.Advance(1.0 / 60.0);
+		s_host->wave.Advance(1.0 / 60.0);
+		const Scene scene = s_host->scene;
+		if (scene != Scene::Wave)
+			DrawBubbles(s_host->bubbles, 0, scene == Scene::Both ? kWidth / 2 : kWidth);
+		if (scene != Scene::Bubbles)
+			DrawWave(s_host->wave, scene == Scene::Both ? kWidth / 2 : 0, kWidth);
 		s_host->context->Render();
 		s_timeUs += 16667;
 		AdvanceScript();
@@ -520,6 +566,32 @@ namespace ps5pad
 	void SetLightBar(int, uint8_t, uint8_t, uint8_t) {}
 	Filtered FilterShortcuts(int, uint32_t buttons) { return {buttons, false}; }
 	Shortcut TakeShortcut() { return Shortcut::None; }
+}
+
+// -- GameTDB's box art, in brief: what the preview's own folder has ---------------------------------
+// (build/preview/boxart/<wiiu|3ds>/<ID>.tga, put there by hand: GameTDB's covers are not ours to
+// keep in the repository)
+
+namespace ps5boxart
+{
+	std::string Path(System system, const std::string& id)
+	{
+		const std::string path = s_output + "/boxart/" + (system == System::WiiU ? "wiiu/" : "3ds/") + id + ".tga";
+		return !id.empty() && std::ifstream(path).good() ? path : std::string();
+	}
+	void Fetch(System, const std::vector<std::string>&) {}
+	uint32_t Arrivals() { return 0; }
+	void SetEnabled(bool) {}
+	bool ImageSize(const std::string& path, int& width, int& height)
+	{
+		unsigned char header[18];
+		std::ifstream in(path, std::ios::binary);
+		if (!in.read((char*)header, sizeof(header)))
+			return false;
+		width = header[12] | header[13] << 8;
+		height = header[14] | header[15] << 8;
+		return width > 0 && height > 0;
+	}
 }
 
 // -- Cemu, in brief: sample games, packs and controllers ------------------------------------------
@@ -650,17 +722,18 @@ namespace ps5emu
 	std::vector<Game> ListGames()
 	{
 		std::vector<Game> games;
-		auto add = [&](uint64_t id, const char* name, uint16_t version, bool update, uint32_t dlc, const char* format) {
+		auto add = [&](uint64_t id, const char* name, uint16_t version, bool update, uint32_t dlc, const char* format, const char* box = "") {
 			games.push_back({id, name, std::string("/data/ps5cemu/games/") + name + ".wua", version, update, dlc, format});
+			games.back().gameId = box;
 		};
 		add(0x0005000010110E00, "Bayonetta 2", 0, false, 0, "WUA");
 		add(0x0005000010138300, "Donkey Kong Country: Tropical Freeze", 17, true, 0, "WUX");
 		add(0x0005000010180700, "Captain Toad: Treasure Tracker", 0, false, 1, "FOLDER");
 		add(0x0005000010145D00, "Super Mario 3D World", 0, false, 0, "WUA");
-		add(0x000500001010EC00, "Mario Kart 8", 64, true, 2, "WUA");
+		add(0x000500001010EC00, "Mario Kart 8", 64, true, 2, "WUA", "AMKE01");
 		add(0x0005000010101D00, "New Super Mario Bros. U + New Super Luigi U", 0, false, 1, "WUD");
 		add(0x0005000010176900, "Splatoon", 288, true, 0, "WUA");
-		add(kBreathOfTheWild, "The Legend of Zelda: Breath of the Wild", 208, true, 1, "WUA");
+		add(kBreathOfTheWild, "The Legend of Zelda: Breath of the Wild", 208, true, 1, "WUA", "ALZE01");
 		add(0x0005000010143500, "The Legend of Zelda: The Wind Waker HD", 0, false, 0, "FOLDER");
 		add(0x000500001014B800, "Xenoblade Chronicles X", 33, true, 1, "WUX");
 		add(0x0005000010172600, "Pikmin 3", 0, false, 0, "NUS");
@@ -780,9 +853,9 @@ namespace ps5emu
 
 int main(int argc, char* argv[])
 {
-	if (argc != 5)
+	if (argc != 6)
 	{
-		std::fprintf(stderr, "launcher-preview UI_FOLDER OUTPUT_FOLDER SCRIPT GAMES_FOLDER\n");
+		std::fprintf(stderr, "launcher-preview UI_FOLDER OUTPUT_FOLDER SCRIPT GAMES_FOLDER 3DS_GAMES_FOLDER\n");
 		return 2;
 	}
 	s_ui = argv[1];
@@ -792,9 +865,12 @@ int main(int argc, char* argv[])
 	settings.gamesFolder = argv[4];
 	settings.lastGame = 0x00050000101C9400;
 	settings.recent = {0x00050000101C9400, 0x0005000010143500, 0x000500001010EC00, 0x0005000010101D00};
+	settings.n3ds.gamesFolder = argv[5];
+	settings.n3ds.lastGame = 0x0004000000053F00;
+	settings.n3ds.recent = {0x0004000000053F00, 0x0004000000030600, 0x000400000017C100};
 	ps5launcher::Status status;
 	status.coreReady = true;
-	status.diagnostics = {"PS5Cemu preview, Cemu 2.6.0", "Jailbroken by the HEN: /data reachable, JIT memory available",
+	status.diagnostics = {"PS5CEMU-HAR preview: Cemu at 4e3c824, Azahar at 4598458", "Jailbroken by the HEN: /data reachable, JIT memory available",
 		"Boot log: /data/ps5cemu/logs/boot.log", "Cemu's log: /data/ps5cemu/log.txt"};
 	ps5launcher::Run(settings, status);
 	// a game was chosen: the loading screen is on

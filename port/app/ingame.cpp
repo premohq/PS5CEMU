@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ingame.h"
+#include "emulator.h"
+#include "menu_canvas.h"
 #include "../ps5/kernel.h"
 #include "../ps5/pad.h"
 
@@ -12,8 +14,6 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
-
-#include <cstring>
 
 namespace
 {
@@ -43,6 +43,15 @@ namespace
 	uint32_t s_buttons = 0, s_pressed = 0; // player 1's buttons, and those pressed since the last frame
 	bool s_confirmLibrary = false;
 	std::string s_gameName;
+	// The menu's pages: its main one, and the controllers'
+	enum class Page
+	{
+		Main,
+		Controls,
+	};
+	Page s_page = Page::Main;
+	bool s_pageChanged = false;
+	int s_controlsPlayer = 0;
 
 	float UiScale()
 	{
@@ -50,14 +59,7 @@ namespace
 		return std::max(1.0f, ImGui::GetIO().DisplaySize.y / 1080.0f);
 	}
 
-	void DrawCursor(ImDrawList* draw, ImVec2 at, bool pressed, float scale)
-	{
-		const float radius = 12.0f * scale;
-		if (pressed)
-			draw->AddCircleFilled(at, radius, IM_COL32(255, 255, 255, 170));
-		draw->AddCircle(at, radius + 2.0f * scale, IM_COL32(0, 0, 0, 200), 0, 3.0f * scale);
-		draw->AddCircle(at, radius, IM_COL32(255, 255, 255, 255), 0, 2.5f * scale);
-	}
+	using ps5menu::DrawCursor;
 
 	void CloseMenu()
 	{
@@ -73,89 +75,47 @@ namespace
 			g_tvAudio->SetVolume(GetConfig().tv_volume);
 	}
 
-	// The launcher's look (frontend/ui, in the dark blue tools/recolour-ui.py gives it): its panels,
-	// rows, colours and controller hints, drawn here with ImGui on its 1920x1080 layout scaled to the
-	// screen, so the menu over a game is laid out as the launcher's screens are.
-	constexpr ImU32 Colour(uint32_t rgb, uint8_t alpha = 255)
+	// The launcher's look, in Cemu's dark blue (menu_canvas.h)
+	using ps5menu::Canvas;
+	using ps5menu::Colour;
+	constexpr ImU32 kTitle = ps5menu::kBlue.title, kText = ps5menu::kBlue.text, kCopy = ps5menu::kBlue.copy,
+		kAccent = ps5menu::kBlue.accent, kKicker = ps5menu::kBlue.kicker, kLine = ps5menu::kBlue.line;
+
+	const char* TypeName(ps5emu::EmulatedType type)
 	{
-		return IM_COL32(rgb >> 16, (rgb >> 8) & 255, rgb & 255, alpha);
+		switch (type)
+		{
+		case ps5emu::EmulatedType::GamePad: return "Wii U GamePad";
+		case ps5emu::EmulatedType::Pro: return "Pro Controller";
+		case ps5emu::EmulatedType::Classic: return "Classic Controller";
+		case ps5emu::EmulatedType::Wiimote: return "Wii Remote";
+		case ps5emu::EmulatedType::Nunchuk: return "Wii Remote + Nunchuk";
+		case ps5emu::EmulatedType::None: break;
+		}
+		return "None";
 	}
-	constexpr ImU32 kTitle = Colour(0xf2f8ff), kText = Colour(0xedf1f6), kCopy = Colour(0xcad1d9), kAccent = Colour(0xb8cfed),
-		kKicker = Colour(0x82ace2), kLine = Colour(0x454d59);
 
-	struct Canvas
+	// The emulated controllers a player can have: Cemu has two GamePads at most.
+	std::vector<ps5emu::EmulatedType> TypesFor(int player)
 	{
-		ImDrawList* draw;
-		float scale;
-		ImVec2 origin;
+		int otherGamePads = 0;
+		for (int other = 0; other < ps5pad::kMaxPlayers; other++)
+			if (other != player && ps5emu::GetPlayerControls(other).type == ps5emu::EmulatedType::GamePad)
+				otherGamePads++;
+		std::vector<ps5emu::EmulatedType> types;
+		if (otherGamePads < 2)
+			types.push_back(ps5emu::EmulatedType::GamePad);
+		for (auto type : {ps5emu::EmulatedType::Pro, ps5emu::EmulatedType::Classic, ps5emu::EmulatedType::Wiimote, ps5emu::EmulatedType::Nunchuk})
+			types.push_back(type);
+		return types;
+	}
 
-		ImVec2 At(float x, float y) const { return {origin.x + x * scale, origin.y + y * scale}; }
-
-		void Panel(float x, float y, float width, float height) const
-		{
-			draw->AddRectFilled(At(x + 2, y + 2), At(x + width - 3, y + height - 3), Colour(0x070d18, 0xf5), 26 * scale);
-			draw->AddRect(At(x + 2, y + 2), At(x + width - 3, y + height - 3), Colour(0x34506f, 0xa8), 26 * scale, 0, scale);
-		}
-
-		// A row as the launcher's library rows: dark, or with the focus's deep blue gradient
-		void Row(float x, float y, float width, float height, bool focused) const
-		{
-			const ImVec2 a = At(x + 2, y + 2), b = At(x + width - 3, y + height - 3);
-			if (!focused)
-			{
-				draw->AddRectFilled(a, b, Colour(0x0d1828, 0xe8), 13 * scale);
-				draw->AddRect(a, b, Colour(0x2a4462, 0x77), 13 * scale, 0, scale);
-				return;
-			}
-			const int start = draw->VtxBuffer.Size;
-			draw->AddRectFilled(a, b, Colour(0x2a63a6, 0x78), 13 * scale);
-			ImGui::ShadeVertsLinearColorGradientKeepAlpha(draw, start, draw->VtxBuffer.Size, a, {b.x, a.y}, Colour(0x2a63a6), Colour(0x0d2140));
-			draw->AddRect(a, b, Colour(0x5c9ce6, 0xa0), 13 * scale, 0, 1.5f * scale);
-		}
-
-		void Text(ImFont* font, float size, float x, float y, ImU32 colour, const std::string& text, float wrap = 0.0f) const
-		{
-			draw->AddText(font, size * scale, At(x, y), colour, text.c_str(), nullptr, wrap * scale);
-		}
-
-		void TextRight(ImFont* font, float size, float right, float y, ImU32 colour, const std::string& text) const
-		{
-			const float width = font->CalcTextSizeA(size * scale, FLT_MAX, 0.0f, text.c_str()).x / scale;
-			Text(font, size, right - width, y, colour, text);
-		}
-
-		// A controller hint: its button's mark, as the launcher's mono icons have it, and what it
-		// does. Returns where the next one goes.
-		float Hint(ImFont* font, float x, float y, const char* button, const std::string& label) const
-		{
-			const ImU32 colour = kCopy;
-			const float thick = 2.2f * scale;
-			const ImVec2 centre = At(x + 13, y + 14);
-			const float r = 10 * scale;
-			if (std::strcmp(button, "cross") == 0)
-			{
-				draw->AddLine({centre.x - r, centre.y - r}, {centre.x + r, centre.y + r}, colour, thick);
-				draw->AddLine({centre.x - r, centre.y + r}, {centre.x + r, centre.y - r}, colour, thick);
-			}
-			else if (std::strcmp(button, "circle") == 0)
-				draw->AddCircle(centre, r, colour, 0, thick);
-			else if (std::strcmp(button, "leftright") == 0)
-			{
-				draw->AddLine({centre.x - r - 2 * scale, centre.y}, {centre.x + r + 2 * scale, centre.y}, colour, thick);
-				for (const float side : {-1.0f, 1.0f})
-				{
-					const ImVec2 tip{centre.x + side * (r + 2 * scale), centre.y};
-					draw->AddLine(tip, {tip.x - side * 6 * scale, centre.y - 6 * scale}, colour, thick);
-					draw->AddLine(tip, {tip.x - side * 6 * scale, centre.y + 6 * scale}, colour, thick);
-				}
-			}
-			else if (std::strcmp(button, "touchpad") == 0)
-				draw->AddRect({centre.x - r - 3 * scale, centre.y - r + 3 * scale}, {centre.x + r + 3 * scale, centre.y + r - 3 * scale},
-					colour, 3 * scale, 0, thick);
-			Text(font, 20, x + 38, y + 2, colour, label);
-			return x + 38 + font->CalcTextSizeA(20 * scale, FLT_MAX, 0.0f, label.c_str()).x / scale + 44;
-		}
-	};
+	void ShowPage(Page page)
+	{
+		s_page = page;
+		s_pageChanged = true;
+		s_confirmLibrary = false;
+	}
 
 	void DrawMenu(float scale)
 	{
@@ -183,22 +143,18 @@ namespace
 			{
 				ImGui::GetCurrentContext()->NavDisableHighlight = false; // Back to the game shows as selected
 				s_confirmLibrary = false;
+				s_page = Page::Main; // the menu opens on its first page
 				s_gameName = CafeSystem::GetForegroundTitleName();
 			}
 			const Canvas canvas{ImGui::GetWindowDrawList(), scale, origin};
 			canvas.draw->AddRectFilled({0, 0}, io.DisplaySize, Colour(0x02060e, 0xb8)); // the game, dimmed
 
-			canvas.Text(titleFont, 48, 108, 62, kTitle, "PS5Cemu");
+			canvas.Text(titleFont, 48, 108, 62, kTitle, "PS5 CEMU");
 			canvas.Text(smallFont, 20, 110, 132, kCopy, s_gameName);
 			canvas.Panel(108, 188, 820, 720);
-			canvas.Text(smallFont, 20, 138, 208, kKicker, "IN THE GAME");
+			canvas.Text(smallFont, 20, 138, 208, kKicker, s_page == Page::Controls ? "CONTROLS" : "IN THE GAME");
 			canvas.Panel(980, 188, 820, 720);
 
-			static const char* kFilters[] = {"Bilinear", "Bicubic", "Bicubic Hermite", "Nearest neighbour"};
-			const bool gamePadMain = LatteGPUState.isDRCPrimary;
-			const bool stretch = config.fullscreen_scaling == kStretch;
-			const bool overlay = config.overlay.position != ScreenPosition::kDisabled;
-			const int filter = std::clamp((int)config.upscale_filter, 0, 3);
 			struct Item
 			{
 				const char* id;
@@ -206,34 +162,77 @@ namespace
 				bool setting; // Left and Right change it
 				const char* help;
 			};
-			const Item items[] = {
-				{"resume", "Back to the game", "", false, "Closes this menu: the game carries on where it is."},
-				{"main", "Main screen", gamePadMain ? "GamePad" : "TV", true,
-					"Which picture fills the TV: the TV's or the GamePad's.\nIn the game, touchpad click + L1 swaps them."},
-				{"corner", fmt::format("{} in a corner", gamePadMain ? "TV" : "GamePad"), s_cornerScreen ? "On" : "Off", true,
-					"The other screen, small in the bottom right corner, so both can be seen.\nIn the game, touchpad click + R1."},
-				{"upscaling", "Upscaling to 4K", kFilters[filter], true,
-					"How the game's picture is scaled to the screen. Bicubic is sharp, Bicubic Hermite a little softer, Bilinear "
-					"softer still; Nearest neighbour keeps pixels square."},
-				{"scaling", "Picture", stretch ? "Stretched" : "Its own shape", true,
-					"Its own shape keeps the picture's proportions, with bars where they differ from the screen's; Stretched "
-					"fills the screen."},
-				{"overlay", "Performance overlay", overlay ? "On" : "Off", true,
-					"Frames per second, CPU and memory use in the top left corner, as Cemu shows them."},
-				{"volume", "Volume", fmt::format("{}%", config.tv_volume), true, "The game's sound. Left and Right change it by 10%."},
-				{"library", "Back to the library", s_confirmLibrary ? "Press Cross again" : "", false,
-					"Leaves the game for the library. What you have not saved in the game is lost."},
-			};
+			std::vector<Item> items;
+			const bool controlsPage = s_page == Page::Controls;
+			static const char* kFilters[] = {"Bilinear", "Bicubic", "Bicubic Hermite", "Nearest neighbour"};
+			const bool gamePadMain = LatteGPUState.isDRCPrimary;
+			const bool stretch = config.fullscreen_scaling == kStretch;
+			const bool overlay = config.overlay.position != ScreenPosition::kDisabled;
+			const int filter = std::clamp((int)config.upscale_filter, 0, 3);
+			const int player = s_controlsPlayer;
+			const auto controls = ps5emu::GetPlayerControls(player);
+			const auto mappings = ps5emu::ListMappings(player);
+			// A, B, X and Y come first on the controllers that have them: on Circle where the Wii U has
+			// A, or on Cross
+			const bool faceButtons = mappings.size() > 3 && mappings[0].button == "A" && mappings[3].button == "Y";
+			const bool aOnCircle = faceButtons && mappings[0].input == "Circle";
+			if (!controlsPage)
+				items = {
+					{"resume", "Back to the game", "", false, "Closes this menu: the game carries on where it is."},
+					{"main", "Main screen", gamePadMain ? "GamePad" : "TV", true,
+						"Which picture fills the TV: the TV's or the GamePad's.\nIn the game, touchpad click + L1 swaps them."},
+					{"corner", fmt::format("{} in a corner", gamePadMain ? "TV" : "GamePad"), s_cornerScreen ? "On" : "Off", true,
+						"The other screen, small in the bottom right corner, so both can be seen.\nIn the game, touchpad click + R1."},
+					{"upscaling", "Upscaling to 4K", kFilters[filter], true,
+						"How the game's picture is scaled to the screen. Bicubic is sharp, Bicubic Hermite a little softer, Bilinear "
+						"softer still; Nearest neighbour keeps pixels square."},
+					{"scaling", "Picture", stretch ? "Stretched" : "Its own shape", true,
+						"Its own shape keeps the picture's proportions, with bars where they differ from the screen's; Stretched "
+						"fills the screen."},
+					{"overlay", "Performance overlay", overlay ? "On" : "Off", true,
+						"Frames per second, CPU and memory use in the top left corner, as Cemu shows them."},
+					{"volume", "Volume", fmt::format("{}%", config.tv_volume), true, "The game's sound. Left and Right change it by 10%."},
+					{"controls", "Controls", "", false,
+						"Each player's controller: the emulated one, motion controls, vibration, the sticks' deadzones and where A and B are. "
+						"They are kept for the next games too."},
+					{"library", "Back to the library", s_confirmLibrary ? "Press Cross again" : "", false,
+						"Leaves the game for the library. What you have not saved in the game is lost."},
+				};
+			else
+				items = {
+					{"player", "Player", fmt::format("{}{}", player + 1, controls.connected ? "" : "  (no DualSense)"), true,
+						"Whose controller the settings below are: Left and Right choose the player."},
+					{"type", "Emulated controller", TypeName(controls.type), true,
+						"What the game sees in this player's hands. Most games want the Wii U GamePad for player 1; a game may only "
+						"notice a new controller when it next looks for one. Cemu has two GamePads at most."},
+					{"motion", "Motion controls", !controls.hasMotion ? "None on this one" : controls.motion ? "On" : "Off", true,
+						"The DualSense's gyroscope and accelerometer as the controller's own, for the games that aim or steer by tilting."},
+					{"rumble", "Vibration", controls.rumble ? fmt::format("{}%", controls.rumble) : "Off", true,
+						"How strongly the DualSense rumbles when the game makes the controller vibrate. Left and Right change it by 10%."},
+					{"left", "Left stick deadzone", fmt::format("{}%", controls.leftDeadzone), true,
+						"How far the left stick moves before the game sees it. Raise it if a character drifts when you let go."},
+					{"right", "Right stick deadzone", fmt::format("{}%", controls.rightDeadzone), true,
+						"How far the right stick moves before the game sees it. Raise it if the camera drifts when you let go."},
+					{"layout", "A and B", !faceButtons ? "-" : aOnCircle ? "A on Circle" : "A on Cross", true,
+						"A on Circle and B on Cross, where the Wii U has them, or A on Cross and B on Circle, with X and Y swapped to "
+						"match. Every button can be set in the launcher's Settings > Controls."},
+					{"back", "Back", "", false, "To the menu's first page."},
+				};
 
 			int focused = 0;
-			for (int i = 0; i < (int)std::size(items); i++)
+			const float spacing = 72, height = 64;
+			for (int i = 0; i < (int)items.size(); i++)
 			{
 				const Item& item = items[i];
-				const float y = 250 + i * 80;
+				const float y = 250 + i * spacing;
 				ImGui::SetCursorScreenPos(canvas.At(138, y));
-				const bool chosen = ImGui::InvisibleButton(item.id, {760 * scale, 72 * scale});
-				if (i == 0 && appearing)
-					ImGui::SetItemDefaultFocus();
+				const bool chosen = ImGui::InvisibleButton(item.id, {760 * scale, height * scale});
+				if (i == 0 && (appearing || s_pageChanged))
+				{
+					ImGui::SetFocusID(ImGui::GetItemID(), ImGui::GetCurrentWindow());
+					ImGui::GetCurrentContext()->NavDisableHighlight = false;
+					s_pageChanged = false; // a page chosen below, this frame, gets its focus next frame
+				}
 				const bool isFocused = ImGui::IsItemFocused();
 				if (isFocused)
 					focused = i;
@@ -245,34 +244,83 @@ namespace
 					else if (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight) || ImGui::IsKeyPressed(ImGuiKey_GamepadLStickRight))
 						change = 1;
 				}
-				canvas.Row(138, y, 760, 72, isFocused);
-				canvas.Text(rowFont, 24, 164, y + 21, kText, item.label);
-				canvas.TextRight(rowFont, 22, 872, y + 23, kAccent, item.value);
+				canvas.Row(138, y, 760, height, isFocused);
+				canvas.Text(rowFont, 24, 164, y + 17, kText, item.label);
+				canvas.TextRight(rowFont, 22, 872, y + 19, kAccent, item.value);
 				if (change == 0)
 					continue;
-				switch (i)
+				const std::string id = item.id;
+				if (id == "resume")
+					CloseMenu();
+				else if (id == "main")
+					ps5ingame::SwapScreens();
+				else if (id == "corner")
+					ps5ingame::ToggleCornerScreen();
+				else if (id == "upscaling")
+					config.upscale_filter = (filter + (change < 0 ? 3 : 1)) % 4;
+				else if (id == "scaling")
+					config.fullscreen_scaling = stretch ? kKeepAspectRatio : kStretch;
+				else if (id == "overlay")
 				{
-				case 0: CloseMenu(); break;
-				case 1: ps5ingame::SwapScreens(); break;
-				case 2: ps5ingame::ToggleCornerScreen(); break;
-				case 3: config.upscale_filter = (filter + (change < 0 ? 3 : 1)) % 4; break;
-				case 4: config.fullscreen_scaling = stretch ? kKeepAspectRatio : kStretch; break;
-				case 5:
 					config.overlay.position = overlay ? ScreenPosition::kDisabled : ScreenPosition::kTopLeft;
 					config.overlay.fps = config.overlay.cpu_usage = config.overlay.ram_usage = true;
-					break;
-				case 6:
+				}
+				else if (id == "volume")
 					// Cross goes up by 10, and from 100 back to 0
 					SetVolume(chosen && config.tv_volume >= 100 ? 0 : config.tv_volume + change * 10);
-					break;
-				case 7:
+				else if (id == "controls")
+					ShowPage(Page::Controls);
+				else if (id == "library")
+				{
 					if (s_confirmLibrary)
 						s_libraryRequested = true;
 					s_confirmLibrary = true;
-					break;
 				}
+				else if (id == "player")
+					s_controlsPlayer = (player + change + ps5pad::kMaxPlayers) % ps5pad::kMaxPlayers;
+				else if (id == "type")
+				{
+					const auto types = TypesFor(player);
+					int at = 0;
+					for (int t = 0; t < (int)types.size(); t++)
+						if (types[t] == controls.type)
+							at = t;
+					ps5emu::SetEmulatedType(player, types[(at + change + (int)types.size()) % types.size()]);
+				}
+				else if (id == "motion" && controls.hasMotion)
+					ps5emu::SetMotion(player, !controls.motion);
+				else if (id == "rumble")
+				{
+					int rumble = controls.rumble + change * 10;
+					if (chosen && rumble > 100)
+						rumble = 0;
+					ps5emu::SetRumble(player, std::clamp(rumble, 0, 100));
+					if (rumble > 0)
+						ps5pad::SetVibrationEnabled(true);
+				}
+				else if (id == "left" || id == "right")
+				{
+					const bool leftStick = id == "left";
+					int value = (leftStick ? controls.leftDeadzone : controls.rightDeadzone) + change * 5;
+					if (chosen && value > 50)
+						value = 0;
+					value = std::clamp(value, 0, 50);
+					ps5emu::SetDeadzones(player, leftStick ? value : controls.leftDeadzone, leftStick ? controls.rightDeadzone : value);
+				}
+				else if (id == "layout" && faceButtons)
+				{
+					using ps5emu::PadInput;
+					const PadInput a = aOnCircle ? PadInput::Cross : PadInput::Circle, b = aOnCircle ? PadInput::Circle : PadInput::Cross;
+					const PadInput x = aOnCircle ? PadInput::Square : PadInput::Triangle, y = aOnCircle ? PadInput::Triangle : PadInput::Square;
+					ps5emu::SetMapping(player, 0, a);
+					ps5emu::SetMapping(player, 1, b);
+					ps5emu::SetMapping(player, 2, x);
+					ps5emu::SetMapping(player, 3, y);
+				}
+				else if (id == "back")
+					ShowPage(Page::Main);
 			}
-			if (focused != 7)
+			if (items[focused].id != std::string("library"))
 				s_confirmLibrary = false;
 
 			// the right-hand panel: the game, and what the focused item does
@@ -291,16 +339,22 @@ namespace
 			float x = 108;
 			x = canvas.Hint(smallFont, x, 973, "cross", "Choose");
 			x = canvas.Hint(smallFont, x, 973, "leftright", "Change");
-			x = canvas.Hint(smallFont, x, 973, "circle", "Back to the game");
+			x = canvas.Hint(smallFont, x, 973, "circle", s_page == Page::Controls ? "Back" : "Back to the game");
 			canvas.Hint(smallFont, x, 973, "touchpad", "Touchpad click + L1 / R1: the screens, in the game");
 		}
 		ImGui::End();
 		ImGui::PopStyleColor();
 
-		// Circle or Options closes it, but not the press of Options that opened it
+		// Circle or Options closes it, but not the press of Options that opened it; on the controls'
+		// page, Circle goes back to the first
 		const bool settled = sceKernelGetProcessTime() - s_menuOpenedAt > 300000;
 		if (settled && (s_pressed & (ps5pad::kCircle | ps5pad::kOptions)) && !(s_buttons & ps5pad::kTouchPad))
-			CloseMenu();
+		{
+			if (s_page == Page::Controls && (s_pressed & ps5pad::kCircle))
+				ShowPage(Page::Main);
+			else
+				CloseMenu();
+		}
 	}
 }
 

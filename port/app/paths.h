@@ -27,14 +27,19 @@ namespace ps5paths
 	constexpr const char* kInstallDir = "/data/homebrew/PPSA99360";
 	constexpr const char* kMountedEboot = "/data/homebrew/PPSA99360/eboot.bin";
 
-	constexpr const char* kRoot = "/data/ps5cemu";
-	constexpr const char* kMlc = "/data/ps5cemu/mlc01";
-	constexpr const char* kGames = "/data/ps5cemu/games";
-	constexpr const char* kCache = "/data/ps5cemu/cache";
-	constexpr const char* kRadvCache = "/data/ps5cemu/cache/radv";
-	constexpr const char* kLogs = "/data/ps5cemu/logs";
-	constexpr const char* kLauncherSettings = "/data/ps5cemu/ps5cemu.json";
-	constexpr const char* kCovers = "/data/ps5cemu/covers";
+// everything PS5CEMU-HAR writes: on the console /data/ps5cemu; the launcher's preview on a PC
+// (tools/preview-launcher.sh) gives a folder of its own
+#ifndef PS5CEMU_DATA
+#define PS5CEMU_DATA "/data/ps5cemu"
+#endif
+	constexpr const char* kRoot = PS5CEMU_DATA;
+	constexpr const char* kMlc = PS5CEMU_DATA "/mlc01";
+	constexpr const char* kGames = PS5CEMU_DATA "/games";
+	constexpr const char* kCache = PS5CEMU_DATA "/cache";
+	constexpr const char* kRadvCache = PS5CEMU_DATA "/cache/radv";
+	constexpr const char* kLogs = PS5CEMU_DATA "/logs";
+	constexpr const char* kLauncherSettings = PS5CEMU_DATA "/ps5cemu.json";
+	constexpr const char* kCovers = PS5CEMU_DATA "/covers";
 
 	// The app's own folder. The sandbox mounts it as /app0, but a process the HEN has jailbroken
 	// sees the console's root, which has no /app0: there the app is read where it is installed, or

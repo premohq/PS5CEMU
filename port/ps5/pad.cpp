@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <vector>
 
 extern "C"
 {
@@ -79,7 +80,13 @@ namespace ps5pad
 				handle = scePadGetHandle(user, kPortTypeStandard, 0);
 			if (handle < 0)
 			{
-				ps5log::Line("[pad] no controller for user {:#x} (player {}): {:#x}", user, player + 1, (uint32_t)handle);
+				// said once a user: Rescan tries again every two seconds
+				static std::vector<int32_t> s_told;
+				if (std::find(s_told.begin(), s_told.end(), user) == s_told.end())
+				{
+					s_told.push_back(user);
+					ps5log::Line("[pad] no controller for user {:#x} (player {}): {:#x}", user, player + 1, (uint32_t)handle);
+				}
 				return;
 			}
 			Slot& slot = s_slots[player];

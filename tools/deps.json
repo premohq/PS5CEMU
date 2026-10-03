@@ -103,6 +103,19 @@
       "creates": ".deps/PS5_PayloadSDK/platform/tools/setup-sdk.sh"
     },
     {
+      "name": "azahar",
+      "about": "Mihawk-99's PS5_Azahar: Azahar (3DS emulator, GPL-2.0-or-later) with PS5_Dynarmic, whose code cache is the console's executable memory. patches/azahar holds the port's changes (tools/azahar-patches.sh); tools/build-azahar.sh builds its core",
+      "kind": "git",
+      "url": "https://github.com/mihawk-99/PS5_Azahar.git",
+      "commit": "4598458e115f108a6e2211eb0763eb22ab383d4c",
+      "path": ".deps/PS5_Azahar",
+      "submodules": ["externals/boost", "externals/nihstro", "externals/soundtouch", "externals/dynarmic", "externals/xbyak", "externals/enet",
+                     "externals/teakra", "externals/lodepng/lodepng", "externals/zstd", "externals/libyuv", "externals/dds-ktx", "externals/vma",
+                     "externals/vulkan-headers", "externals/sirit/sirit", "externals/faad2/faad2", "externals/library-headers",
+                     "externals/spirv-headers", "externals/spirv-tools", "externals/xxHash", "externals/cryptopp", "externals/inih/inih"],
+      "creates": ".deps/PS5_Azahar/src/core/core.cpp"
+    },
+    {
       "name": "compiler-rt",
       "about": "LLVM 18.1.8 builtins Clang's PS5 code calls and the host has no compiler-rt for: the emulated-TLS runtime (emutls.c, for -femulated-tls) and __cpu_model (x86.c, for __builtin_cpu_supports in RADV)",
       "kind": "files",

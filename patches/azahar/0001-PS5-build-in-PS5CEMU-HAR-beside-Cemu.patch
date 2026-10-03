@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 23:28:18 +0000
+Subject: [PATCH] PS5: build in PS5CEMU-HAR, beside Cemu
+
+Azahar's core is built with the toolchain PS5CEMU-HAR builds Cemu with, and
+linked into the same title:
+
+- a system zstd that is only a static library (pacbrew's) is linked as
+  such, and the seekable format Z3DS files use is built from the bundled
+  copy's contrib on top of it, as the bundled build does;
+- on the PS5 no stack protector, stack clash protection or
+  _FORTIFY_SOURCE: the console exports no __stack_chk_guard to titles and
+  its libc has no fortified functions;
+- dynarmic is given the platform layer's headers (PS5_PLATFORM_INCLUDE),
+  for its code cache in executable memory;
+- a frontend kept outside the tree can be added to the build
+  (AZAHAR_EXTERNAL_FRONTEND): PS5CEMU-HAR's port/azahar.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ externals/CMakeLists.txt | 21 ++++++++++++++++++++-
+ src/CMakeLists.txt       | 22 ++++++++++++++++++----
+ 2 files changed, 38 insertions(+), 5 deletions(-)
+
+diff --git a/externals/CMakeLists.txt b/externals/CMakeLists.txt
+index 9b7a3fe4a..5fc8729ec 100644
+--- a/externals/CMakeLists.txt
++++ b/externals/CMakeLists.txt
+@@ -129,6 +129,11 @@ if ("x86_64" IN_LIST ARCHITECTURE OR "arm64" IN_LIST ARCHITECTURE)
+         set(DYNARMIC_FRONTENDS "A32" CACHE STRING "")
+         set(DYNARMIC_USE_PRECOMPILED_HEADERS ${CITRA_USE_PRECOMPILED_HEADERS} CACHE BOOL "")
+         add_subdirectory(dynarmic EXCLUDE_FROM_ALL)
++        # The PS5: dynarmic's code cache is the platform layer's executable memory (ps5platform/exec.h,
++        # from the payload SDK fork RADV is linked with)
++        if (PS5_PLATFORM_INCLUDE)
++            target_include_directories(dynarmic PRIVATE ${PS5_PLATFORM_INCLUDE})
++        endif()
+     endif()
+ endif()
+ 
+@@ -223,8 +228,22 @@ if(USE_SYSTEM_ZSTD)
+     add_library(zstd INTERFACE)
+     if(TARGET zstd::libzstd_shared)
+         message(STATUS "Found system Zstandard")
++        set(system_zstd zstd::libzstd_shared)
++    else()
++        message(STATUS "Found system Zstandard (static)")
++        set(system_zstd zstd::libzstd_static)
+     endif()
+-    target_link_libraries(zstd INTERFACE zstd::libzstd_shared)
++
++    # The seekable format (Z3DS files) is not part of the library: it is built from the bundled
++    # copy's contrib, on the system's library.
++    add_library(zstd_seekable STATIC
++        ${CMAKE_CURRENT_SOURCE_DIR}/zstd/contrib/seekable_format/zstdseek_compress.c
++        ${CMAKE_CURRENT_SOURCE_DIR}/zstd/contrib/seekable_format/zstdseek_decompress.c
++    )
++    target_include_directories(zstd_seekable PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/zstd/contrib/seekable_format)
++    target_include_directories(zstd_seekable PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/zstd/lib/common)
++    target_link_libraries(zstd_seekable PUBLIC ${system_zstd})
++    target_link_libraries(zstd INTERFACE ${system_zstd} zstd_seekable)
+ else()
+     set(ZSTD_LEGACY_SUPPORT OFF)
+     set(ZSTD_BUILD_PROGRAMS OFF)
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 329af28d2..4e5bec9ca 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -111,10 +111,15 @@ else()
+         -Wall
+         # In case a flag isn't supported on e.g. a certain architecture, don't error.
+         -Wno-unused-command-line-argument
+-        # Build fortification options
+-        -fstack-protector-strong
+     )
+-    if (NOT ENABLE_LIBRETRO)
++    # The PS5 exports no __stack_chk_guard to titles, and its libc has no fortified functions.
++    if (CMAKE_CXX_COMPILER_TARGET MATCHES "ps5")
++        set(FORTIFY_SOURCE_DEFINED ON)
++    else()
++        # Build fortification options
++        add_compile_options(-fstack-protector-strong)
++    endif()
++    if (NOT ENABLE_LIBRETRO AND NOT CMAKE_CXX_COMPILER_TARGET MATCHES "ps5")
+         add_compile_options(
+             -Wp,-D_GLIBCXX_ASSERTIONS
+             -fstack-clash-protection
+@@ -122,7 +127,9 @@ else()
+     endif()
+ 
+     # If we define _FORTIFY_SOURCE when it is already defined, compilation will fail
+-    string(FIND "-D_FORTIFY_SOURCE" "${CMAKE_CXX_FLAGS} " FORTIFY_SOURCE_DEFINED)
++    if (NOT FORTIFY_SOURCE_DEFINED)
++        string(FIND "-D_FORTIFY_SOURCE" "${CMAKE_CXX_FLAGS} " FORTIFY_SOURCE_DEFINED)
++    endif()
+ 
+     if (NOT CMAKE_BUILD_TYPE STREQUAL Debug AND NOT FORTIFY_SOURCE_DEFINED)
+         # _FORTIFY_SOURCE can't be used without optimizations.
+@@ -227,3 +234,10 @@ endif()
+ if (ENABLE_WEB_SERVICE)
+     add_subdirectory(web_service)
+ endif()
++
++# A frontend kept outside the tree, built against the libraries above (the PS5's: PS5CEMU-HAR's
++# port/azahar)
++set(AZAHAR_EXTERNAL_FRONTEND "" CACHE PATH "A frontend's source directory, outside the tree")
++if (AZAHAR_EXTERNAL_FRONTEND)
++    add_subdirectory(${AZAHAR_EXTERNAL_FRONTEND} external_frontend)
++endif()

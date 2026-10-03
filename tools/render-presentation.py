@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Draw PS5Cemu's home-screen background, sce_sys/pic0.dds.
+"""Draw PS5CEMU-HAR's home-screen background, sce_sys/pic0.dds.
 
     render-presentation.py OUTPUT_DDS [PREVIEW_PNG]
 
 The PS5 shows pic0.dds behind the app while it is selected on the home screen, and pic1.dds while
-it starts; tools/package.sh installs this one image as both. It is the Wii U Homebrew Launcher's
-background (tools/render-background.py, under the README banner's lighter overlay) with the app's
-logo on the right: its GamePad (tools/render-icons.py's shapes, in the banner's palette) over its
-name. The shell draws the app's name, a Play button and its own shading on the left, and a homebrew
-title cannot give it a logo of its own there (that is the store's catalog data), so the logo is part
-of the picture, where the shell leaves room for one.
+it starts; tools/package.sh installs this one image as both. It is the app's two sides, split down
+the middle as its start screen is: on the left Cemu's, the Wii U GamePad on the Wii U Homebrew
+Launcher's blue with its bubbles (tools/render-background.py); on the right Azahar's, the 3DS on the
+3DS Homebrew Launcher's waves made yellow (as port/frontend/wave.cpp draws them). The devices are
+tools/render-icons.py's, drawn at this size, each with its emulator's name under it, and the app's
+name runs across the two halves below them. The shell draws its own title, a Play button and its
+shading over the lower left.
 
 The console takes a single 3840x2160 BC7_UNORM DX10 DDS without mipmaps
 (ps5-native-app-boilerplate's tools/validate-assets.sh), which this encodes itself in BC7's mode 6:
 per 4x4 block, a line between two colours, along the block's principal axis, and a 4-bit position
-on it for each pixel. The background's colours lie close to such lines (white over blue).
+on it for each pixel.
 
 This needs Pillow and numpy, and a bold sans-serif TrueType font (Segoe UI or DejaVu Sans); its
-output is committed (sce_sys/pic0.dds), so the build needs none of them.
+output is committed (sce_sys/pic0.dds), so the build needs none of them. The devices take a minute
+or so: render-icons.py draws them a pixel at a time.
 """
 
 import importlib.util
@@ -30,43 +32,102 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 3840, 2160
-OVERLAY = 0.35
-BODY, SCREEN_TOP, SCREEN_BOTTOM = (0xf4, 0xf8, 0xfc), (0x1e, 0x4f, 0x7a), (0x0b, 0x1e, 0x33)
-ACCENT, DETAIL = (0x9f, 0xd6, 0xff), (0x6a, 0x7e, 0x93)
-# the logo: the icon's unit square, T pixels wide, with the GamePad's centre (0.5, 0.53) at CENTRE
-T = 1500
-CENTRE = (int(W * 0.70), int(H * 0.40))
+HALF = W // 2
+# each device: its unit square's width in pixels, and where its centre goes
+GAMEPAD = (1150, (HALF // 2, int(H * 0.33)))
+N3DS = (1000, (HALF + HALF // 2, int(H * 0.34)))
 FONTS = ["C:/Windows/Fonts/segoeuib.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
 SUBTITLE_FONTS = ["C:/Windows/Fonts/seguisb.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 
 
-def load_background():
-    spec = importlib.util.spec_from_file_location(
-        "render_background", os.path.join(os.path.dirname(os.path.abspath(__file__)), "render-background.py"))
+def load(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(os.path.dirname(os.path.abspath(__file__)), file))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def background():
-    hbl = load_background()
-    t = (np.arange(H, dtype=np.float64)[:, None] + 0.5) / H
-    image = np.empty((H, W, 3))
+ICONS = load("render_icons", "render-icons.py")
+HBL = load("render_background", "render-background.py")
+
+
+def bubbles(width, height, region):
+    """The Homebrew Launcher's background: region (x, y, w, h) of its 1280x720 screen at this size,
+    under the banner's overlay (render-icons.py's)."""
+    rx, ry, rw, rh = region
+    sx, sy = width / rw, height / rh
+    t = (ry + (np.arange(height, dtype=np.float64)[:, None] + 0.5) / sy) / 720.0
+    image = np.empty((height, width, 3))
     for c in range(3):
-        image[:, :, c] = hbl.TOP[c] + (hbl.BOTTOM[c] - hbl.TOP[c]) * t
-    for x, y, radius, alpha in hbl.particles():
-        cx, cy, r = x * W, y * H, radius * W
-        if r < 0.5:
+        image[:, :, c] = HBL.TOP[c] + (HBL.BOTTOM[c] - HBL.TOP[c]) * t
+    for x, y, radius, alpha in HBL.particles():
+        cx, cy, r = (x * 1280 - rx) * sx, (y * 720 - ry) * sy, radius * 1280 * sx
+        if r < 0.5 or cx + r < 0 or cx - r > width or cy + r < 0 or cy - r > height:
             continue
-        x0, x1 = max(0, int(cx - r - 1)), min(W, int(cx + r + 2))
-        y0, y1 = max(0, int(cy - r - 1)), min(H, int(cy + r + 2))
+        x0, x1 = max(0, int(cx - r - 1)), min(width, int(cx + r + 2))
+        y0, y1 = max(0, int(cy - r - 1)), min(height, int(cy + r + 2))
         px = np.arange(x0, x1) + 0.5 - cx
         py = np.arange(y0, y1)[:, None] + 0.5 - cy
         a = alpha * np.clip(r - np.hypot(px, py) + 0.5, 0.0, 1.0)
-        region = image[y0:y1, x0:x1]
-        region += (255.0 - region) * a[:, :, None]
-    image *= 1.0 - OVERLAY
+        region_pixels = image[y0:y1, x0:x1]
+        region_pixels += (255.0 - region_pixels) * a[:, :, None]
+    return image * (1.0 - ICONS.OVERLAY)
+
+
+def waves(width, height, region):
+    """Azahar's background: region (x, y, w, h) of its 1920x1080 screen at this size, its waves
+    where they start (render-icons.py's waves(), a row at a time)."""
+    rx, ry, rw, rh = region
+    sx, sy = rw / width, rh / height
+    fy = ry + (np.arange(height, dtype=np.float64)[:, None] + 0.5) * sy
+    fx = rx + (np.arange(width, dtype=np.float64)[None, :] + 0.5) * sx
+    t = np.clip(fy / 1080.0, 0.0, 1.0)
+    image = np.empty((height, width, 3))
+    for c in range(3):
+        image[:, :, c] = ICONS.WAVE_TOP[c] + (ICONS.WAVE_BOTTOM[c] - ICONS.WAVE_TOP[c]) * t
+    for top, length, amplitude, colour, alpha in ICONS.WAVES:
+        surface = top + amplitude * (1.0 - np.cos(2.0 * np.pi * fx / length))
+        depth = (fy - surface) / sy
+        body = np.clip(depth + 0.5, 0.0, 1.0)
+        crest = np.clip(1.0 - np.abs(depth - 1.5 / sy) / (2.5 / sy), 0.0, 1.0)
+        a = np.minimum(1.0, body * alpha + crest * 0.35)
+        image += (np.array(colour, dtype=np.float64) - image) * a[:, :, None]
+    return image * (1.0 - ICONS.WAVE_OVERLAY)
+
+
+def background():
+    left = bubbles(HALF, H, (373, 0, 640, 720))
+    right = waves(W - HALF, H, (480, -260, 960, 1080))  # the waves below the label
+    image = np.concatenate([left, right], axis=1)
+    # the line between the two halves, as on the start screen and the icon
+    image[:, HALF - 2:HALF + 2] += (255.0 - image[:, HALF - 2:HALF + 2]) * 0.35
     return Image.fromarray(np.clip(np.rint(image), 0, 255).astype(np.uint8), "RGB").convert("RGBA")
+
+
+def device(kind, scale, centre):
+    """A device as an RGBA layer over the whole picture: its colours where its silhouette is, and
+    its shadow, drawn by render-icons.py in the box it fills."""
+    draw = ICONS.DEVICES[kind]
+    ox, oy = centre
+    # its unit square's part that has it, with a margin
+    x0, x1 = int(ox - 0.45 * scale), int(ox + 0.45 * scale)
+    y0, y1 = int(oy - 0.42 * scale), int(oy + 0.42 * scale)
+    pixel = 1.0 / scale
+    rgba = np.zeros((y1 - y0, x1 - x0, 4), dtype=np.uint8)
+    for y in range(y0, y1):
+        v = (y + 0.5 - oy) / scale + 0.5
+        row = rgba[y - y0]
+        for x in range(x0, x1):
+            u = (x + 0.5 - ox) / scale + 0.5
+            colour, silhouette = draw(u, v, pixel, ICONS.BODY)
+            if silhouette > 0.0:
+                row[x - x0] = (int(round(colour[0])), int(round(colour[1])), int(round(colour[2])), int(round(silhouette * 255)))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    layer.paste(Image.fromarray(rgba, "RGBA"), (x0, y0))
+    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    shadow.putalpha(layer.getchannel("A").point(lambda a: a * 0.45))
+    shadow = shadow.transform(shadow.size, Image.AFFINE, (1, 0, 0, 0, 1, -int(0.02 * scale)))  # a little lower
+    return Image.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(0.02 * scale)), layer)
 
 
 def font(candidates, size):
@@ -76,62 +137,35 @@ def font(candidates, size):
     sys.exit("no font found: " + ", ".join(candidates))
 
 
-def gamepad():
-    """The GamePad, drawn twice the size and scaled down: an RGBA layer over the whole picture."""
-    s = 2
-    layer = Image.new("RGBA", (W * s, H * s), (0, 0, 0, 0))
-    ox, oy = CENTRE[0] - 0.5 * T, CENTRE[1] - 0.53 * T
-
-    def xy(u, v):
-        return ((ox + u * T) * s, (oy + v * T) * s)
-
-    def box(draw, cx, cy, hw, hh, r, fill):
-        draw.rounded_rectangle([xy(cx - hw, cy - hh), xy(cx + hw, cy + hh)], radius=r * T * s, fill=fill)
-
-    def dot(draw, cx, cy, r, fill):
-        draw.ellipse([xy(cx - r, cy - r), xy(cx + r, cy + r)], fill=fill)
-
-    # its shadow, then the body
-    shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
-    box(ImageDraw.Draw(shadow), 0.5, 0.55, 0.40, 0.205, 0.085, (0, 0, 0, 115))
-    layer = Image.alpha_composite(layer, shadow.filter(ImageFilter.GaussianBlur(0.02 * T * s)))
-    draw = ImageDraw.Draw(layer)
-    box(draw, 0.5, 0.53, 0.40, 0.205, 0.085, BODY)
-    box(draw, 0.5, 0.52, 0.205, 0.145, 0.02, ACCENT)
-    # the screen, a vertical gradient
-    (sx0, sy0), (sx1, sy1) = xy(0.5 - 0.19, 0.52 - 0.13), xy(0.5 + 0.19, 0.52 + 0.13)
-    size = (int(sx1 - sx0), int(sy1 - sy0))
-    t = np.linspace(0.0, 1.0, size[1])[:, None, None]
-    gradient = np.array(SCREEN_TOP) + (np.array(SCREEN_BOTTOM) - np.array(SCREEN_TOP)) * t
-    screen = Image.fromarray(np.repeat(gradient, size[0], axis=1).astype(np.uint8), "RGB")
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size[0] - 1, size[1] - 1], radius=0.014 * T * s, fill=255)
-    layer.paste(screen, (int(sx0), int(sy0)), mask)
-    draw = ImageDraw.Draw(layer)
-    # the play triangle on the screen (render-icons.py: u >= 0.47, |v - 0.52| * 1.15 <= (0.56 - u) * 0.62)
-    half = 0.09 * 0.62 / 1.15
-    draw.polygon([xy(0.47, 0.52 - half), xy(0.47, 0.52 + half), xy(0.56, 0.52)], fill=ACCENT)
-    for cx in (0.175, 0.825):  # sticks
-        dot(draw, cx, 0.43, 0.04, DETAIL)
-        dot(draw, cx, 0.43, 0.024, BODY)
-    box(draw, 0.175, 0.585, 0.045, 0.014, 0.005, DETAIL)  # d-pad
-    box(draw, 0.175, 0.585, 0.014, 0.045, 0.005, DETAIL)
-    for cx, cy, c in ((0.825, 0.545, ACCENT), (0.86, 0.585, DETAIL), (0.79, 0.585, DETAIL), (0.825, 0.625, DETAIL)):
-        dot(draw, cx, cy, 0.017, c)
-    return layer.resize((W, H), Image.LANCZOS)
-
-
-def name():
-    """The app's name and what it is, centred under the GamePad, with a soft shadow."""
+def labels():
+    """Each side's emulator under its device, and the app's name across the two halves, on a soft
+    dark band that keeps it legible over the blue and the yellow alike; all with a soft shadow."""
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
-    top = CENTRE[1] + int((0.735 - 0.53) * T) + 110
-    title, subtitle = font(FONTS, 250), font(SUBTITLE_FONTS, 88)
-    draw.text((CENTRE[0], top), "PS5Cemu", font=title, fill=BODY + (255,), anchor="mt")
-    draw.text((CENTRE[0], top + 300), "Cemu, the Wii U emulator", font=subtitle, fill=ACCENT + (255,), anchor="mt")
+    side, what = font(FONTS, 104), font(SUBTITLE_FONTS, 64)
+    for (scale, (cx, cy)), name, system, accent in (
+            (GAMEPAD, "Cemu", "Wii U", ICONS.BLUE["accent"]),
+            (N3DS, "Azahar", "Nintendo 3DS", (0xff, 0xf1, 0xc8))):
+        top = cy + int(0.40 * scale) + 24
+        draw.text((cx, top), name, font=side, fill=ICONS.BODY + (255,), anchor="mt")
+        draw.text((cx, top + 132), system, font=what, fill=accent + (255,), anchor="mt")
+
+    # the wordmark, centred on the line between the halves
+    mark, tagline = font(FONTS, 220), font(SUBTITLE_FONTS, 78)
+    top = int(H * 0.715)
+    line = "Wii U and Nintendo 3DS games on PlayStation 5"
+    left, _, right, bottom = draw.textbbox((HALF, top), "PS5CEMU-HAR", font=mark, anchor="mt")
+    line_left, _, line_right, line_bottom = draw.textbbox((HALF, bottom + 40), line, font=tagline, anchor="mt")
+    band = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(band).rounded_rectangle([min(left, line_left) - 90, top - 50, max(right, line_right) + 90, line_bottom + 60],
+                                           radius=70, fill=(4, 8, 16, 120))
+    band = band.filter(ImageFilter.GaussianBlur(24))
+    draw.text((HALF, top), "PS5CEMU-HAR", font=mark, fill=ICONS.BODY + (255,), anchor="mt")
+    draw.text((HALF, bottom + 40), line, font=tagline, fill=(0xdd, 0xe6, 0xf0, 255), anchor="mt")
+
     shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    shadow.putalpha(layer.getchannel("A").point(lambda a: a * 0.45))
-    return Image.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(10)), layer)
+    shadow.putalpha(layer.getchannel("A").point(lambda a: a * 0.5))
+    return Image.alpha_composite(Image.alpha_composite(band, shadow.filter(ImageFilter.GaussianBlur(10))), layer)
 
 
 WEIGHTS = np.array([0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64])
@@ -214,7 +248,10 @@ def write_dds(path, blocks):
 def main():
     if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)
-    picture = Image.alpha_composite(Image.alpha_composite(background(), gamepad()), name()).convert("RGB")
+    picture = background()
+    for kind, (scale, centre) in (("wiiu", GAMEPAD), ("3ds", N3DS)):
+        picture = Image.alpha_composite(picture, device(kind, scale, centre))
+    picture = Image.alpha_composite(picture, labels()).convert("RGB")
     rgb = np.asarray(picture)
     blocks = encode_bc7(rgb)
     decoded = decode_bc7(blocks, W, H)

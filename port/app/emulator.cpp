@@ -15,6 +15,8 @@
 #include "../ps5/notify.h"
 #include "../ps5/pad.h"
 #include "../ps5/privilege.h"
+#include "ps5platform/exec.h"
+#include "ps5platform/heap.h"
 #include "PS5PadController.h"
 
 #include "audio/IAudioAPI.h"
@@ -27,6 +29,7 @@
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
 #include "Cafe/TitleList/SaveList.h"
 #include "Cafe/TitleList/TitleList.h"
+#include "Cafe/TitleList/ParsedMetaXml.h"
 #include "Cemu/ncrypto/ncrypto.h"
 #include "Cemu/Logging/CemuLogging.h"
 #include "Common/ExceptionHandler/ExceptionHandler.h"
@@ -43,11 +46,37 @@
 extern "C" int32_t sceSystemServiceParamGetInt(int32_t paramId, int32_t* value);
 extern uint64 _rdtscFrequency; // Cafe/HW/Espresso/PPCTimer.cpp
 
+// The platform layer's statistics (RADV's link brings it): weak, so a link check without RADV
+// still links, the calls skipped
+#pragma weak ps5_heap_stats
+#pragma weak ps5_exec_live
+
+// MemMapperPS5.cpp
+void PS5Cemu_MemMapperUsage(size_t& committed, size_t& jit);
+
 namespace ps5emu
 {
 	namespace
 	{
 		bool s_firstStart = false;
+
+		// The ID on a game's box (GameTDB's) from its meta.xml: the product code's last part and the
+		// company code's last two digits (WUP-P-ALZE and 0001: ALZE01)
+		std::string BoxId(const std::string& productCode, const std::string& companyCode)
+		{
+			const size_t dash = productCode.rfind('-');
+			const std::string product = dash == std::string::npos ? productCode : productCode.substr(dash + 1);
+			if (product.size() != 4 || companyCode.size() < 2)
+				return {};
+			std::string id = product + companyCode.substr(companyCode.size() - 2);
+			for (char& c : id)
+			{
+				c = (char)std::toupper((unsigned char)c);
+				if (!std::isalnum((unsigned char)c))
+					return {};
+			}
+			return id;
+		}
 
 		bool CreateDirectories(const fs::path& path)
 		{
@@ -252,7 +281,7 @@ namespace ps5emu
 			ps5paths::CemuData(), failedWriteAccess);
 		if (!failedWriteAccess.empty())
 		{
-			error = fmt::format("PS5Cemu cannot write to {}. Is the HEN loaded?", _pathToUtf8(*failedWriteAccess.begin()));
+			error = fmt::format("PS5CEMU-HAR cannot write to {}. Is the HEN loaded?", _pathToUtf8(*failedWriteAccess.begin()));
 			return false;
 		}
 		cemuLog_createLogFile(false); // log.txt in /data/ps5cemu, as on the desktop
@@ -274,7 +303,7 @@ namespace ps5emu
 		}
 		if (!CreateDefaultMlcFiles(ActiveSettings::GetMlcPath()))
 		{
-			error = fmt::format("PS5Cemu cannot create the MLC folder {}", _pathToUtf8(ActiveSettings::GetMlcPath()));
+			error = fmt::format("PS5CEMU-HAR cannot create the MLC folder {}", _pathToUtf8(ActiveSettings::GetMlcPath()));
 			return false;
 		}
 		InstallBundledGraphicPacks();
@@ -333,6 +362,8 @@ namespace ps5emu
 			if (game.name.empty())
 				game.name = fmt::format("{:016x}", titleId);
 			game.path = base.GetPath();
+			if (ParsedMetaXml* meta = base.GetMetaInfo())
+				game.gameId = BoxId(meta->GetProductCode(), meta->GetCompanyCode());
 			game.hasUpdate = info.HasUpdate();
 			game.version = game.hasUpdate ? info.GetUpdate().GetAppTitleVersion() : base.GetAppTitleVersion();
 			game.dlcCount = (uint32_t)info.GetAOC().size();
@@ -382,7 +413,7 @@ namespace ps5emu
 			const CafeTitleFileType fileType = DetermineCafeSystemFileType(game.path);
 			if (fileType != CafeTitleFileType::RPX && fileType != CafeTitleFileType::ELF)
 			{
-				error = "This is not a Wii U game PS5Cemu can start.";
+				error = "This is not a Wii U game PS5CEMU-HAR can start.";
 				if (launchTitle.GetInvalidReason() == TitleInfo::InvalidReason::NO_DISC_KEY)
 					error += " Its disc key is missing from /data/ps5cemu/keys.txt.";
 				else if (launchTitle.GetInvalidReason() == TitleInfo::InvalidReason::NO_TITLE_TIK)
@@ -423,15 +454,46 @@ namespace ps5emu
 		return g_renderer != nullptr;
 	}
 
+	// What memory is used and left, once a minute in a game: what keeps growing while a game plays
+	// on is a leak. The heap is every malloc and new of the app's (Cemu's, RADV's, Azahar's), which
+	// the platform layer serves from direct memory (ps5platform/heap.h); Cemu's guest memory and
+	// recompiled code are its MemMapper's; Azahar's recompiled code the platform's (exec.h).
+	void LogMemory()
+	{
+		size_t flexible = 0, direct = 0;
+		off_t start = 0;
+		sceKernelAvailableFlexibleMemorySize(&flexible);
+		sceKernelAvailableDirectMemorySize(0, (off_t)sceKernelGetDirectMemorySize(), 0, &start, &direct);
+		size_t committed = 0, jit = 0;
+		PS5Cemu_MemMapperUsage(committed, jit);
+		std::string heap = "no heap statistics";
+		if (ps5_heap_stats)
+		{
+			struct ps5_heap_stats stats{};
+			ps5_heap_stats(&stats);
+			heap = fmt::format("heap {} MiB (peak {} MiB, {} segments, {} arenas, {} from libc)", stats.mapped_bytes >> 20,
+				stats.peak_bytes >> 20, stats.segments, stats.arenas, stats.libc_fallbacks);
+		}
+		uint64_t execRegions = 0, execBytes = 0;
+		if (ps5_exec_live)
+			ps5_exec_live(&execRegions, &execBytes);
+		ps5log::Line("[memory] {}; Cemu: {} MiB committed, {} MiB recompiled code; Azahar's recompiled code {} MiB in {} regions; "
+			"flexible memory free {} MiB, largest free block of direct memory {} MiB",
+			heap, committed >> 20, jit >> 20, execBytes >> 20, execRegions, flexible >> 20, direct >> 20);
+	}
+
 	void RunGame()
 	{
-		ps5notify::Send("Touchpad + Options: the PS5Cemu menu (screens, picture, volume, library)");
+		ps5notify::Send("Touchpad + Options: the PS5 CEMU menu (screens, picture, volume, controls, library)");
 		uint64_t polls = 0;
+		LogMemory();
 		for (;;)
 		{
 			sceKernelUsleep(16000);
 			if (++polls % 120 == 0)
 				ps5pad::Rescan(); // controllers joining or leaving, about every two seconds
+			if (polls % 3750 == 0)
+				LogMemory();
 			switch (ps5pad::TakeShortcut())
 			{
 			case ps5pad::Shortcut::Menu:

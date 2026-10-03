@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 18:33:01 +0000
+Subject: [PATCH] PS5: timers on the TSC, and threads named to the port
+
+HighResolutionTimer read the monotonic clock, which on the PS5 is a call
+into the kernel, and Cemu reads the time often: the GPU thread on each
+turn of its command loop while it waits for work. It now reads the TSC,
+with the frequency the console reports (sceKernelGetTscFrequency), as
+the performance counter is read on Windows.
+
+SetThreadName also tells the port the thread's name (PS5Cemu_ThreadNamed),
+which puts the emulated CPU cores, the GPU thread and the compilers on
+cores of their own (port/ps5/threads.h).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/util/helpers/helpers.cpp                        |  7 +++++++
+ .../highresolutiontimer/HighResolutionTimer.cpp     | 13 +++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/src/util/helpers/helpers.cpp b/src/util/helpers/helpers.cpp
+index 2e0195a..b65f001 100644
+--- a/src/util/helpers/helpers.cpp
++++ b/src/util/helpers/helpers.cpp
+@@ -102,6 +102,11 @@ std::string GetSystemErrorMessage(const std::error_code& ec)
+ 	return fmt::format("{}\n{}",msg, ec.message());
+ }
+ 
++#if defined(CEMU_PS5)
++// The port puts a thread on the CPUs its job gets, by its name (port/ps5/threads.h).
++void PS5Cemu_ThreadNamed(const char* name);
++#endif
++
+ #if BOOST_OS_WINDOWS
+ const DWORD MS_VC_EXCEPTION = 0x406D1388;
+ #pragma pack(push,8)
+@@ -149,6 +154,8 @@ void SetThreadName(const char* name)
+ 	pthread_setname_np(name);
+ #elif defined(CEMU_PS5)
+ 	pthread_set_name_np(pthread_self(), name); // FreeBSD's name for it, exported by libkernel
++	// every thread Cemu starts names itself first: the emulated CPU cores, the GPU, the compilers
++	PS5Cemu_ThreadNamed(name);
+ #else
+ 	if(std::strlen(name) > 15)
+ 		cemuLog_log(LogType::Force, "Truncating thread name {} because it was longer than 15 characters", name);
+diff --git a/src/util/highresolutiontimer/HighResolutionTimer.cpp b/src/util/highresolutiontimer/HighResolutionTimer.cpp
+index 54fa4fb..507434d 100644
+--- a/src/util/highresolutiontimer/HighResolutionTimer.cpp
++++ b/src/util/highresolutiontimer/HighResolutionTimer.cpp
+@@ -1,5 +1,10 @@
+ #include "util/highresolutiontimer/HighResolutionTimer.h"
+ 
++#if defined(CEMU_PS5)
++#include <x86intrin.h>
++extern "C" uint64_t sceKernelGetTscFrequency();
++#endif
++
+ HighResolutionTimer HighResolutionTimer::now()
+ {
+ #if BOOST_OS_WINDOWS
+@@ -13,6 +18,11 @@ HighResolutionTimer HighResolutionTimer::now()
+     return HighResolutionTimer(nsec);
+ #elif BOOST_OS_MACOS
+ 	return HighResolutionTimer(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW));
++#elif defined(CEMU_PS5)
++	// The TSC, as Windows' performance counter is on most machines. The PS5's clock_gettime is a
++	// call into the kernel, and Cemu reads the time often: the GPU thread on each turn of its
++	// command loop while it waits for work.
++	return HighResolutionTimer(__rdtsc());
+ #elif BOOST_OS_BSD
+     timespec pc;
+     clock_gettime(CLOCK_MONOTONIC, &pc);
+@@ -33,6 +43,9 @@ uint64 HighResolutionTimer::m_freq = []() -> uint64 {
+ 	return (uint64)(freq.QuadPart);
+ #elif BOOST_OS_MACOS
+ 	return 1000000000;
++#elif defined(CEMU_PS5)
++	// the console's own figure (1.6 GHz), which the kernel has measured
++	return sceKernelGetTscFrequency();
+ #elif BOOST_OS_BSD
+ 	// now() counts nanoseconds, whatever the clock's resolution: FreeBSD's clock_getres gives
+ 	// that as 10^9 / the clock's frequency + 1 nanoseconds, so with a clock of 1 GHz or less

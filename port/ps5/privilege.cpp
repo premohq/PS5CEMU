@@ -85,12 +85,16 @@ namespace ps5privilege
 
 		bool ProbeJit()
 		{
-			// one page, left mapped: what the recompiler will ask for
+			// one page, as the recompiler will ask for, given back after
 			int handle = -1;
 			if (sceKernelJitCreateSharedMemory(nullptr, ps5::kPageSize, ps5::kProtRead | ps5::kProtWrite | ps5::kProtExec, &handle) != 0)
 				return false;
 			void* address = nullptr;
-			return sceKernelJitMapSharedMemory(handle, ps5::kProtRead | ps5::kProtWrite | ps5::kProtExec, &address) == 0 && address;
+			const bool mapped = sceKernelJitMapSharedMemory(handle, ps5::kProtRead | ps5::kProtWrite | ps5::kProtExec, &address) == 0 && address;
+			if (mapped)
+				sceKernelMunmap(address, ps5::kPageSize);
+			close(handle);
+			return mapped;
 		}
 
 		bool CanReachData()

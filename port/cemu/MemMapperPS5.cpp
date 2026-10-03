@@ -21,6 +21,7 @@
 
 #include <map>
 #include <mutex>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -38,7 +39,8 @@ namespace
 	struct Allocation
 	{
 		size_t size;
-		off_t physical; // direct memory, or -1 for JIT memory
+		off_t physical;	 // direct memory, or -1 for JIT memory
+		int handle = -1; // JIT memory's, closed with it: the memory lasts as long as the handle
 	};
 
 	constexpr uint8 kCommitted = 0x80;
@@ -142,11 +144,25 @@ namespace
 		if (sceKernelJitMapSharedMemory(handle, ps5::kProtRead | ps5::kProtWrite | ps5::kProtExec, &address) != 0 || !address)
 		{
 			ps5log::Line("[memmap] JIT memory could not be mapped ({:#x} bytes)", size);
+			close(handle);
 			return nullptr;
 		}
-		s_allocations[reinterpret_cast<uintptr_t>(address)] = {size, -1};
+		s_allocations[reinterpret_cast<uintptr_t>(address)] = {size, -1, handle};
 		return address;
 	}
+}
+
+// The boot log's memory line (app/emulator.cpp): the direct memory committed to Cemu's
+// reservations and stand-alone allocations, and its JIT memory.
+void PS5Cemu_MemMapperUsage(size_t& committed, size_t& jit)
+{
+	std::lock_guard lock(s_mutex);
+	committed = jit = 0;
+	for (const auto& [base, reservation] : s_reservations)
+		for (const auto& [physical, length] : reservation.backing)
+			committed += length;
+	for (const auto& [address, allocation] : s_allocations)
+		(allocation.physical >= 0 ? committed : jit) += allocation.size;
 }
 
 namespace MemMapper
@@ -264,6 +280,8 @@ namespace MemMapper
 			sceKernelMunmap(baseAddr, it->second.size);
 			if (it->second.physical >= 0)
 				sceKernelReleaseDirectMemory(it->second.physical, it->second.size);
+			if (it->second.handle >= 0)
+				close(it->second.handle);
 			s_allocations.erase(it);
 			return;
 		}

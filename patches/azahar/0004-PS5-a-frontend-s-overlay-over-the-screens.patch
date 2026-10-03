@@ -1,0 +1,171 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 23:28:18 +0000
+Subject: [PATCH] PS5: a frontend's overlay over the screens
+
+The PS5 frontend draws its in-game menu over the 3DS's screens, in the
+renderer's own frame: SetFrontendOverlay gives a function the device and
+the command buffer twice a frame, before the screens' render pass begins
+(for uploads) and in it, after the screens and the cursor.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/video_core/CMakeLists.txt                 |  1 +
+ .../renderer_vulkan/renderer_vulkan.cpp       | 41 +++++++++++++++++++
+ .../renderer_vulkan/renderer_vulkan.h         |  5 +++
+ .../renderer_vulkan/vk_frontend_overlay.h     | 38 +++++++++++++++++
+ 4 files changed, 85 insertions(+)
+ create mode 100644 src/video_core/renderer_vulkan/vk_frontend_overlay.h
+
+diff --git a/src/video_core/CMakeLists.txt b/src/video_core/CMakeLists.txt
+index 528072c9a..bcc601562 100644
+--- a/src/video_core/CMakeLists.txt
++++ b/src/video_core/CMakeLists.txt
+@@ -179,6 +179,7 @@ if (ENABLE_VULKAN)
+         renderer_vulkan/vk_scheduler.h
+         renderer_vulkan/vk_resource_pool.cpp
+         renderer_vulkan/vk_resource_pool.h
++        renderer_vulkan/vk_frontend_overlay.h
+         renderer_vulkan/vk_instance.cpp
+         renderer_vulkan/vk_instance.h
+         renderer_vulkan/vk_pipeline_cache.cpp
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.cpp b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+index 5221fdf15..a1afa28b6 100644
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.cpp
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+@@ -2,6 +2,7 @@
+ // Licensed under GPLv2 or any later version
+ // Refer to the license.txt file included.
+ 
++#include <atomic>
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+ #include "common/memory_detect.h"
+@@ -185,6 +186,37 @@ void RendererVulkan::PrepareRendertarget() {
+     }
+ }
+ 
++#ifdef __PROSPERO__
++namespace {
++std::atomic<FrontendOverlay> frontend_overlay{nullptr};
++} // Anonymous namespace
++
++void SetFrontendOverlay(FrontendOverlay overlay) {
++    frontend_overlay = overlay;
++}
++
++void RendererVulkan::DrawFrontendOverlay(vk::CommandBuffer cmdbuf, vk::RenderPass renderpass,
++                                         u32 width, u32 height, bool inside_render_pass) {
++    const auto overlay = frontend_overlay.load();
++    if (!overlay) {
++        return;
++    }
++    overlay(FrontendOverlayTarget{
++        .instance = static_cast<VkInstance>(instance.GetInstance()),
++        .physical_device = static_cast<VkPhysicalDevice>(instance.GetPhysicalDevice()),
++        .device = static_cast<VkDevice>(instance.GetDevice()),
++        .queue_family = instance.GetGraphicsQueueFamilyIndex(),
++        .queue = static_cast<VkQueue>(instance.GetGraphicsQueue()),
++        .render_pass = static_cast<VkRenderPass>(renderpass),
++        .image_count = main_present_window.ImageCount(),
++        .command_buffer = static_cast<VkCommandBuffer>(cmdbuf),
++        .width = width,
++        .height = height,
++        .inside_render_pass = inside_render_pass,
++    });
++}
++#endif
++
+ void RendererVulkan::PrepareDraw(Frame* frame, const Layout::FramebufferLayout& layout) {
+     const auto sampler = present_samplers[!Settings::values.filter_mode.GetValue()];
+     const auto present_set = present_heap.Commit();
+@@ -228,6 +260,9 @@ void RendererVulkan::PrepareDraw(Frame* frame, const Layout::FramebufferLayout&
+             .pClearValues = &clear,
+         };
+ 
++#ifdef __PROSPERO__
++        DrawFrontendOverlay(cmdbuf, renderpass, frame->width, frame->height, false);
++#endif
+         cmdbuf.beginRenderPass(renderpass_begin_info, vk::SubpassContents::eInline);
+         cmdbuf.bindPipeline(vk::PipelineBindPoint::eGraphics, present_pipelines[index]);
+         cmdbuf.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, layout, 0, present_set, {});
+@@ -1060,6 +1095,12 @@ void RendererVulkan::DrawScreens(Frame* frame, const Layout::FramebufferLayout&
+ 
+     DrawCursor(layout);
+ 
++#ifdef __PROSPERO__
++    scheduler.Record([this, renderpass = main_present_window.Renderpass(), width = frame->width,
++                      height = frame->height](vk::CommandBuffer cmdbuf) {
++        DrawFrontendOverlay(cmdbuf, renderpass, width, height, true);
++    });
++#endif
+     scheduler.Record([](vk::CommandBuffer cmdbuf) { cmdbuf.endRenderPass(); });
+ }
+ 
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.h b/src/video_core/renderer_vulkan/renderer_vulkan.h
+index 2f1c26120..ef9e94496 100644
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.h
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.h
+@@ -13,6 +13,7 @@
+ #include "video_core/renderer_vulkan/vk_instance.h"
+ #include "video_core/renderer_vulkan/vk_present_window.h"
+ #endif
++#include "video_core/renderer_vulkan/vk_frontend_overlay.h"
+ #include "video_core/renderer_vulkan/vk_rasterizer.h"
+ #include "video_core/renderer_vulkan/vk_render_manager.h"
+ #include "video_core/renderer_vulkan/vk_scheduler.h"
+@@ -100,6 +101,10 @@ private:
+                         bool flipped);
+ 
+     void DrawScreens(Frame* frame, const Layout::FramebufferLayout& layout, bool flipped);
++#ifdef __PROSPERO__
++    void DrawFrontendOverlay(vk::CommandBuffer cmdbuf, vk::RenderPass renderpass, u32 width,
++                             u32 height, bool inside_render_pass);
++#endif
+     void DrawBottomScreen(const Layout::FramebufferLayout& layout,
+                           const Common::Rectangle<u32>& bottom_screen);
+ 
+diff --git a/src/video_core/renderer_vulkan/vk_frontend_overlay.h b/src/video_core/renderer_vulkan/vk_frontend_overlay.h
+new file mode 100644
+index 000000000..e403dea67
+--- /dev/null
++++ b/src/video_core/renderer_vulkan/vk_frontend_overlay.h
+@@ -0,0 +1,38 @@
++// Copyright 2026 Citra Emulator Project / Azahar Emulator Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++#pragma once
++
++#ifdef __PROSPERO__
++
++#include "common/common_types.h"
++#include "video_core/renderer_vulkan/vk_common.h"
++
++namespace Vulkan {
++
++/// What a frontend draws over the screens with (the PS5's in-game menu): the device, and the frame
++/// being recorded, before the screens' render pass begins (inside_render_pass false: for uploads)
++/// and in it, after the screens and the cursor (true).
++struct FrontendOverlayTarget {
++    VkInstance instance;
++    VkPhysicalDevice physical_device;
++    VkDevice device;
++    u32 queue_family;
++    VkQueue queue;
++    VkRenderPass render_pass;
++    u32 image_count;
++    VkCommandBuffer command_buffer;
++    u32 width;
++    u32 height;
++    bool inside_render_pass;
++};
++using FrontendOverlay = void (*)(const FrontendOverlayTarget& target);
++
++/// Called where the renderer records its commands (its worker thread, when it has one); null for
++/// none.
++void SetFrontendOverlay(FrontendOverlay overlay);
++
++} // namespace Vulkan
++
++#endif

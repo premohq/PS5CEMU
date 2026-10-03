@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Sat, 3 Oct 2026 00:22:53 +0000
+Subject: [PATCH] PS5: timers on the kernel's clock again
+
+The TSC timer (877b770) is taken back: with it, Breath of the Wild ran in
+the 40s where it held 59-60 frames per second at 1440p before, and
+HighResolutionTimer paces Cemu's frame timing. Its frequency came from
+sceKernelGetTscFrequency, which was not checked against the counter's
+real rate. HighResolutionTimer counts the monotonic clock's nanoseconds
+again, as in 1.0.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../highresolutiontimer/HighResolutionTimer.cpp     | 13 -------------
+ 1 file changed, 13 deletions(-)
+
+diff --git a/src/util/highresolutiontimer/HighResolutionTimer.cpp b/src/util/highresolutiontimer/HighResolutionTimer.cpp
+index 507434d..54fa4fb 100644
+--- a/src/util/highresolutiontimer/HighResolutionTimer.cpp
++++ b/src/util/highresolutiontimer/HighResolutionTimer.cpp
+@@ -1,10 +1,5 @@
+ #include "util/highresolutiontimer/HighResolutionTimer.h"
+ 
+-#if defined(CEMU_PS5)
+-#include <x86intrin.h>
+-extern "C" uint64_t sceKernelGetTscFrequency();
+-#endif
+-
+ HighResolutionTimer HighResolutionTimer::now()
+ {
+ #if BOOST_OS_WINDOWS
+@@ -18,11 +13,6 @@ HighResolutionTimer HighResolutionTimer::now()
+     return HighResolutionTimer(nsec);
+ #elif BOOST_OS_MACOS
+ 	return HighResolutionTimer(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW));
+-#elif defined(CEMU_PS5)
+-	// The TSC, as Windows' performance counter is on most machines. The PS5's clock_gettime is a
+-	// call into the kernel, and Cemu reads the time often: the GPU thread on each turn of its
+-	// command loop while it waits for work.
+-	return HighResolutionTimer(__rdtsc());
+ #elif BOOST_OS_BSD
+     timespec pc;
+     clock_gettime(CLOCK_MONOTONIC, &pc);
+@@ -43,9 +33,6 @@ uint64 HighResolutionTimer::m_freq = []() -> uint64 {
+ 	return (uint64)(freq.QuadPart);
+ #elif BOOST_OS_MACOS
+ 	return 1000000000;
+-#elif defined(CEMU_PS5)
+-	// the console's own figure (1.6 GHz), which the kernel has measured
+-	return sceKernelGetTscFrequency();
+ #elif BOOST_OS_BSD
+ 	// now() counts nanoseconds, whatever the clock's resolution: FreeBSD's clock_getres gives
+ 	// that as 10^9 / the clock's frequency + 1 nanoseconds, so with a clock of 1 GHz or less

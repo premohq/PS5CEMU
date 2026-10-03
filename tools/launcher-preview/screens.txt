@@ -1,5 +1,11 @@
 # Every screen of the launcher (tools/preview-launcher.sh): one PNG each in build/preview.
-wait 4
+wait 6
+shot start                    # the start screen, Cemu chosen
+press right
+shot start-3ds                # Azahar chosen
+press left
+press cross                   # Cemu's side
+wait 2
 shot home
 press down down down          # to the recently played games
 shot home-recent
@@ -15,7 +21,7 @@ shot packs-dropdown
 press circle
 press down                    # Resolution
 press cross
-press down down down          # 1280x720 is in use: three down is 2560x1440
+press down down down          # three down from the one in use
 shot packs-resolution
 press cross
 shot packs-chosen
@@ -86,6 +92,54 @@ press circle                  # home
 press right                   # About, from Settings
 press cross
 shot about
+press circle
+
+# Azahar's side
+press circle                  # back to the start screen
+press right                   # Azahar
+press cross
+wait 2
+shot 3ds-home
+press down down               # the recently played games
+shot 3ds-home-recent
+press up up
+press cross                   # the library
+shot 3ds-library
+press down down
+shot 3ds-library-cia
+press circle
+press up
+press right                   # Settings
+press cross
+shot 3ds-settings
+press cross                   # Video
+press right
+shot 3ds-video
+press circle
+press down down               # Controls
+press cross
+shot 3ds-controls
+press down down
+press cross                   # buttons
+shot 3ds-mapping
+press circle
+press circle
+press down                    # Game files
+press cross
+shot 3ds-files
+press circle
+press down                    # Install CIA files
+press cross
+press down down down          # to the 3DS games' folder
+press cross
+shot 3ds-install
+press down down down down down
+shot 3ds-install-cia
+press circle
+press circle                  # home
+press right                   # About
+press cross
+shot 3ds-about
 press circle
 press down                    # Continue playing
 press cross                   # launch

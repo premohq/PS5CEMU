@@ -21,6 +21,7 @@ extern "C"
 	size_t sceKernelGetDirectMemorySize();
 	int32_t sceKernelAvailableDirectMemorySize(off_t searchStart, off_t searchEnd, size_t alignment, off_t* startOut,
 		size_t* sizeOut);
+	int32_t sceKernelAvailableFlexibleMemorySize(size_t* sizeOut);
 	int32_t sceKernelMunmap(void* address, size_t length);
 	int32_t sceKernelMprotect(const void* address, size_t length, int protection);
 

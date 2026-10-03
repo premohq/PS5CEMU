@@ -28,7 +28,9 @@ body, #app-shell, .library-screen, .settings-screen { background-color: transpar
 #game-packs-setting img { position: absolute; left: 0px; top: 0px; }
 #game-packs-value { position: absolute; right: 26px; top: 0px; height: 94px; line-height: 94px; font-size: 24px; color: #b8cfed; }
 .library-row-meta { width: 110px; left: 620px; }
-.rom-row-name { width: 576px; }
+/* a game's icon before its name, in the library's rows */
+.rom-row-icon { position: absolute; left: 20px; top: 11px; width: 56px; height: 56px; }
+.rom-row-name { left: 92px; width: 512px; }
 
 /* Rows with a setting's name and its value */
 .list-viewport { position: absolute; left: 30px; top: 62px; width: 760px; height: 606px; overflow: hidden; }
@@ -103,3 +105,33 @@ body, #app-shell, .library-screen, .settings-screen { background-color: transpar
 #loading-cover { position: absolute; left: 816px; top: 300px; width: 288px; height: 288px; }
 #loading-title { position: absolute; left: 160px; top: 620px; width: 1600px; height: 64px; color: #f2f8ff; font-size: 40px; line-height: 56px; text-align: center; }
 #loading-caption { position: absolute; left: 160px; top: 696px; width: 1600px; height: 40px; color: #cad1d9; font-size: 24px; line-height: 36px; text-align: center; }
+
+/* The start screen (start.rml): Cemu on the left half, Azahar on the right, each in its colours.
+   Azahar's are gold here (hue 44), which the 3DS theme leaves as it is. */
+#start-header { position: absolute; left: 120px; top: 72px; width: 1680px; height: 88px; }
+#start-brand-icon { position: absolute; left: 0px; top: 0px; width: 72px; height: 72px; }
+#start-brand-name { position: absolute; left: 96px; top: 0px; width: 900px; height: 44px; color: #f2f8ff; font-size: 36px; line-height: 44px; letter-spacing: 3px; }
+#start-brand-copy { position: absolute; left: 96px; top: 48px; width: 1100px; height: 28px; color: #b1b6bd; font-size: 20px; line-height: 28px; letter-spacing: 1px; }
+#start-divider { position: absolute; left: 959px; top: 190px; width: 2px; height: 680px; background-color: rgba(255, 255, 255, 40); }
+.start-side { position: absolute; top: 180px; width: 820px; height: 720px; }
+#start-wiiu { left: 100px; } #start-3ds { left: 1000px; }
+.start-side.dim { opacity: 0.7; }
+.start-chrome { position: absolute; left: 0px; top: 0px; width: 820px; height: 720px; }
+.start-side.focused > .base-chrome { display: none; }
+.start-side.focused > .focused-chrome { display: block; }
+.start-art { position: absolute; left: 190px; top: 28px; width: 440px; height: 440px; }
+.start-name { position: absolute; left: 0px; top: 470px; width: 820px; height: 60px; color: #f2f8ff; font-size: 48px; line-height: 60px; text-align: center; }
+.start-system { position: absolute; left: 0px; top: 536px; width: 820px; height: 30px; color: #82ace2; font-size: 20px; line-height: 30px; letter-spacing: 3px; text-align: center; }
+.start-status { position: absolute; left: 0px; top: 572px; width: 820px; height: 30px; color: #cad1d9; font-size: 20px; line-height: 30px; text-align: center; }
+.start-3ds .start-system { color: #eec15c; }
+.start-3ds .start-status { color: #e6dcc6; }
+.start-button { position: absolute; left: 274px; top: 620px; width: 272px; height: 72px; }
+.start-button img { position: absolute; left: 0px; top: 0px; width: 272px; height: 72px; }
+.start-button span { position: absolute; left: 0px; top: 0px; width: 272px; height: 72px; color: #edf1f6; font-size: 24px; line-height: 70px; text-align: center; }
+.start-side.focused .start-button .base-chrome { display: none; }
+.start-side.focused .start-button .focused-chrome { display: block; }
+#start-header #menu-clock { left: 1552px; }
+#start-footer.hints { left: 120px; top: 952px; width: 1680px; height: 56px; padding-top: 14px; }
+
+/* A CIA file in the install browser: no folder icon */
+.files-row.files-file .files-icon-folder { display: none; }

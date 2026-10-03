@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""ProsperoEden's launcher artwork and stylesheet in dark blue, with nothing but the standard library.
+"""ProsperoEden's launcher artwork and stylesheet in dark blue and in yellow, with nothing but the
+standard library.
 
-    recolour-ui.py PROSPEROEDEN_UI OUTPUT_UI
+    recolour-ui.py PROSPEROEDEN_UI PS5CEMU_RCSS OUTPUT_UI
 
 ProsperoEden's launcher is green: its panels and rows a dark green, the focused ones a lime to teal
-gradient, its accents and greys leaning green. PS5Cemu's is dark blue to black instead, under the
-Wii U Homebrew Launcher's blue:
+gradient, its accents and greys leaning green. PS5CEMU-HAR has two: Cemu's, dark blue to black
+under the Wii U Homebrew Launcher's blue, and Azahar's, the same in a warm black and gold under
+the 3DS Homebrew Launcher's wave, made yellow. Each theme (THEMES) writes:
 
-  - chrome/: the panels, rows and buttons, drawn again from the SVGs they were made from (rounded
-    rectangles with a fill, a gradient or not, and a 1-pixel stroke) with the colours in FILLS and
-    STROKES: navy-black panels and rows, a deep blue gradient on the focused ones with a light blue
+  - chrome/ (chrome-3ds/): the panels, rows and buttons, drawn again from the SVGs they were made
+    from (rounded rectangles with a fill, a gradient or not, and a stroke), and PS5CEMU-HAR's own
+    in the chrome folder beside its stylesheet, with the theme's
+    fills and strokes: dark panels and rows, a deep gradient on the focused ones with a light
     outline, so the focus is as plain to see as before;
-  - styles/app.rcss: each green colour (hue HUE_FROM to HUE_TO degrees) turns blue. Light ones,
-    its text, keep their lightness (a little lighter: blue looks darker than green at the same
-    lightness) so they read as well on the dark panels; dark ones, its backgrounds and dividers,
-    get darker still. Its translucent colours get the alpha RmlUi reads (0 to 255, not 0 to 1),
-    so the shades behind its screens and dialogs show;
-  - icons/: recoloured the same way (the folders); the white ones stay white;
-  - fonts/: as they are; the glyphs are white and take the text's colour.
+  - styles/app.rcss (app-3ds.rcss): each colour in the theme's source hues turns to its hue. Light
+    ones, its text, keep their lightness (a little lighter: blue and gold look darker than green
+    at the same lightness) so they read as well on the dark panels; dark ones, its backgrounds and
+    dividers, get darker still. Its translucent colours get the alpha RmlUi reads (0 to 255, not
+    0 to 1), so the shades behind its screens and dialogs show;
+  - styles/ps5cemu.rcss (ps5cemu-3ds.rcss): PS5CEMU-HAR's own stylesheet, which is written in the
+    blue: as it is (in gold);
+  - icons/ (icons-3ds/): recoloured the same way (the folders); the white ones stay white;
+and fonts/ as they are: the glyphs are white and take the text's colour.
 """
 
 import colorsys
@@ -29,12 +34,12 @@ import shutil
 import struct
 import sys
 
-HUE_FROM, HUE_TO = 45.0, 190.0  # degrees: yellow-green to cyan
-BLUE = 214.0                     # degrees
-MIN_SATURATION = 0.04            # greys keep their faint tint
+MIN_SATURATION = 0.04  # greys keep their faint tint
+GREEN = (45.0, 190.0)  # degrees: yellow-green to cyan, ProsperoEden's
+BLUE = (195.0, 240.0)  # PS5CEMU-HAR's own stylesheet's
 
-# ProsperoEden's chrome colours (RGB; the alpha stays) and PS5Cemu's
-FILLS = {
+# ProsperoEden's chrome colours (RGB; the alpha stays) in each theme
+BLUE_FILLS = {
     "a9db63": "2a63a6",  # focused: the gradient's start
     "245d4a": "0d2140",  # focused: its end
     "0b1713": "070d18",  # panels
@@ -48,7 +53,7 @@ FILLS = {
     "d8e8aa": "8fb8e6",  # scrollbar
     "49624a": "26405e",
 }
-STROKES = {
+BLUE_STROKES = {
     "a9db63": "5c9ce6",  # the focus outline
     "768e75": "34506f",
     "829a7b": "3a5878",
@@ -59,19 +64,51 @@ STROKES = {
     "d8e8aa": "8fb8e6",
     "49624a": "26405e",
 }
+YELLOW_FILLS = {
+    "a9db63": "9c6e0c",  # focused: the gradient's start
+    "245d4a": "3b2905",  # focused: its end
+    "0b1713": "130e05",  # panels
+    "17241e": "21180a",  # rows
+    "15231d": "1f1709",
+    "111f1b": "1b1408",
+    "102019": "1d1608",  # dropdown
+    "16221d": "1c1508",  # the home screen's panel
+    "e6ede4": "f4efe4",  # translucent white (buttons, tiles)
+    "eef7ed": "faf5ea",
+    "d8e8aa": "f0cf6a",  # scrollbar
+    "49624a": "5e4a1c",
+}
+YELLOW_STROKES = {
+    "a9db63": "f2c14e",  # the focus outline
+    "768e75": "6e5a2c",
+    "829a7b": "7a6532",
+    "6a8267": "5c4a22",
+    "688267": "5c4a22",
+    "759078": "655027",
+    "a6bf9b": "a88f52",
+    "d8e8aa": "f0cf6a",
+    "49624a": "5e4a1c",
+}
+
+# name: (hue, the hues it replaces, fills, strokes, the suffix of its folders and files)
+THEMES = {
+    "blue": (214.0, (GREEN,), BLUE_FILLS, BLUE_STROKES, ""),
+    "yellow": (44.0, (GREEN, BLUE), YELLOW_FILLS, YELLOW_STROKES, "-3ds"),
+}
 
 
-def recolour(r, g, b):
-    """A green colour as a blue one: light ones stay light, dark ones go darker."""
+def recolour(r, g, b, theme="blue"):
+    """A colour in the theme's source hues in its own: light ones stay light, dark ones go darker."""
+    hue, sources = THEMES[theme][:2]
     h, l, s = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
-    if s < MIN_SATURATION or not HUE_FROM <= h * 360.0 <= HUE_TO:
+    if s < MIN_SATURATION or not any(low <= h * 360.0 <= high for low, high in sources):
         return r, g, b
     if l >= 0.5:
         l += (1.0 - l) * 0.2
     else:
         l *= 0.8
         s = min(s * 1.2, 0.6)
-    return tuple(round(c * 255.0) for c in colorsys.hls_to_rgb(BLUE / 360.0, l, s))
+    return tuple(round(c * 255.0) for c in colorsys.hls_to_rgb(hue / 360.0, l, s))
 
 
 def write_tga(path, width, height, bgra):
@@ -80,33 +117,34 @@ def write_tga(path, width, height, bgra):
         file.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, width, height, 32, 0x28) + bytes(bgra))
 
 
-def parse_colour(value, table):
+def parse_colour(value, table, theme):
     """#rrggbb or #rrggbbaa as (r, g, b, a), its RGB swapped through table."""
     value = value.lstrip("#").lower()
     rgb = table.get(value[:6])
     if rgb is None:
-        rgb = "%02x%02x%02x" % recolour(*(int(value[i:i + 2], 16) for i in (0, 2, 4)))
+        rgb = "%02x%02x%02x" % recolour(*(int(value[i:i + 2], 16) for i in (0, 2, 4)), theme)
     alpha = int(value[6:8], 16) if len(value) == 8 else 255
     return tuple(int(rgb[i:i + 2], 16) for i in (0, 2, 4)) + (alpha,)
 
 
-def render_svg(svg):
+def render_svg(svg, theme):
     """ProsperoEden's chrome SVGs: one rounded rectangle, filled with a colour or a horizontal
     gradient, with a stroke. Returns width, height and top-down BGRA pixels."""
+    fills, strokes = THEMES[theme][2:4]
     width = int(re.search(r'<svg[^>]*\bwidth="(\d+)"', svg).group(1))
     height = int(re.search(r'<svg[^>]*\bheight="(\d+)"', svg).group(1))
     rect = re.search(r"<rect([^>]*)/>", svg).group(1)
     attribute = lambda name, default=None: (re.search(rf'\b{name}="([^"]*)"', rect) or [None, default])[1]
     x, y, w, h = (float(attribute(n)) for n in ("x", "y", "width", "height"))
     radius = min(float(attribute("rx", "0")), w / 2, h / 2)  # as SVG clamps it
-    stroke = parse_colour(attribute("stroke"), STROKES) if attribute("stroke") else None
+    stroke = parse_colour(attribute("stroke"), strokes, theme) if attribute("stroke") else None
     stroke_width = float(attribute("stroke-width", "1"))
     fill = attribute("fill")
     if fill.startswith("url("):
-        stops = [parse_colour(c, FILLS) for c in re.findall(r'stop-color="([^"]+)"', svg)]
+        stops = [parse_colour(c, fills, theme) for c in re.findall(r'stop-color="([^"]+)"', svg)]
         gradient = (stops[0], stops[-1])
     else:
-        gradient = (parse_colour(fill, FILLS),) * 2
+        gradient = (parse_colour(fill, fills, theme),) * 2
 
     def fill_colour(px):
         t = min(max((px + 0.5 - x) / w, 0.0), 1.0)
@@ -148,7 +186,7 @@ def render_svg(svg):
     return width, height, b"".join(rows)
 
 
-def recolour_tga(source, target):
+def recolour_tga(source, target, theme):
     data = bytearray(open(source, "rb").read())
     if data[2] != 2 or data[16] != 32:
         sys.exit(f"{source} is not an uncompressed 32-bit TGA")
@@ -157,21 +195,21 @@ def recolour_tga(source, target):
         bgr = bytes(data[i:i + 3])
         out = cache.get(bgr)
         if out is None:
-            r, g, b = recolour(bgr[2], bgr[1], bgr[0])
+            r, g, b = recolour(bgr[2], bgr[1], bgr[0], theme)
             out = cache[bgr] = bytes((b, g, r))
         data[i:i + 3] = out
     with open(target, "wb") as file:
         file.write(data)
 
 
-def recolour_rcss(text):
+def recolour_rcss(text, theme):
     def hex_colour(match):
         value = match.group(1)
-        r, g, b = recolour(*(int(value[i:i + 2], 16) for i in (0, 2, 4)))
+        r, g, b = recolour(*(int(value[i:i + 2], 16) for i in (0, 2, 4)), theme)
         return "#%02x%02x%02x%s" % (r, g, b, value[6:])
 
     def rgba(match):
-        r, g, b = recolour(*(int(v) for v in match.group(2, 3, 4)))
+        r, g, b = recolour(*(int(v) for v in match.group(2, 3, 4)), theme)
         alpha = match.group(5) or ""
         if "." in alpha:
             # RmlUi reads rgba()'s alpha as 0 to 255, like the other three, so ProsperoEden's
@@ -184,25 +222,36 @@ def recolour_rcss(text):
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 4:
         sys.exit(__doc__)
-    source, target = sys.argv[1:3]
-    os.makedirs(os.path.join(target, "chrome"), exist_ok=True)
-    for name in sorted(os.listdir(os.path.join(source, "chrome"))):
-        if name.endswith(".svg"):
-            with open(os.path.join(source, "chrome", name)) as file:
-                width, height, pixels = render_svg(file.read())
-            write_tga(os.path.join(target, "chrome", name[:-4] + ".tga"), width, height, pixels)
-    os.makedirs(os.path.join(target, "icons"), exist_ok=True)
-    for name in sorted(os.listdir(os.path.join(source, "icons"))):
-        if name.endswith(".tga"):
-            recolour_tga(os.path.join(source, "icons", name), os.path.join(target, "icons", name))
-    shutil.copytree(os.path.join(source, "fonts"), os.path.join(target, "fonts"), dirs_exist_ok=True)
-    os.makedirs(os.path.join(target, "styles"), exist_ok=True)
+    source, own, target = sys.argv[1:4]
     with open(os.path.join(source, "styles", "app.rcss")) as file:
-        text = file.read()
-    with open(os.path.join(target, "styles", "app.rcss"), "w") as file:
-        file.write(recolour_rcss(text))
+        app = file.read()
+    with open(own) as file:
+        ps5cemu = file.read()
+    os.makedirs(os.path.join(target, "styles"), exist_ok=True)
+    # ProsperoEden's chrome, and PS5CEMU-HAR's own beside its stylesheet (in ProsperoEden's colours)
+    svgs = [os.path.join(source, "chrome", name) for name in sorted(os.listdir(os.path.join(source, "chrome")))]
+    own_chrome = os.path.join(os.path.dirname(own), "chrome")
+    if os.path.isdir(own_chrome):
+        svgs += [os.path.join(own_chrome, name) for name in sorted(os.listdir(own_chrome))]
+    for theme, (_, _, _, _, suffix) in THEMES.items():
+        os.makedirs(os.path.join(target, "chrome" + suffix), exist_ok=True)
+        for svg in svgs:
+            if svg.endswith(".svg"):
+                with open(svg) as file:
+                    width, height, pixels = render_svg(file.read(), theme)
+                write_tga(os.path.join(target, "chrome" + suffix, os.path.basename(svg)[:-4] + ".tga"), width, height, pixels)
+        os.makedirs(os.path.join(target, "icons" + suffix), exist_ok=True)
+        for name in sorted(os.listdir(os.path.join(source, "icons"))):
+            if name.endswith(".tga"):
+                recolour_tga(os.path.join(source, "icons", name), os.path.join(target, "icons" + suffix, name), theme)
+        with open(os.path.join(target, "styles", f"app{suffix}.rcss"), "w") as file:
+            file.write(recolour_rcss(app, theme))
+        # PS5CEMU-HAR's own is written in the blue already
+        with open(os.path.join(target, "styles", f"ps5cemu{suffix}.rcss"), "w") as file:
+            file.write(ps5cemu if theme == "blue" else recolour_rcss(ps5cemu, theme))
+    shutil.copytree(os.path.join(source, "fonts"), os.path.join(target, "fonts"), dirs_exist_ok=True)
 
 
 if __name__ == "__main__":

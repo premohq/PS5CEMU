@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 23:28:18 +0000
+Subject: [PATCH] PS5: Vulkan on the linked driver, VideoOut as a display
+ surface
+
+A PS5 title links its Vulkan driver (RADV) and has no loader to open, and
+its screen is VideoOut, which the driver offers as VK_KHR_display. A new
+window system type, PS5, asks the frontend for both: the driver's
+vkGetInstanceProcAddr (AzaharPS5_GetInstanceProcAddr) and the display
+surface (AzaharPS5_CreateSurface). No X11 or Wayland headers are
+included on the PS5.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/core/frontend/emu_window.h                |  1 +
+ .../renderer_vulkan/vk_platform.cpp           | 26 ++++++++++++++++++-
+ 2 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/frontend/emu_window.h b/src/core/frontend/emu_window.h
+index 451834c5b..d0466a2bd 100644
+--- a/src/core/frontend/emu_window.h
++++ b/src/core/frontend/emu_window.h
+@@ -28,6 +28,7 @@ enum class WindowSystemType : u8 {
+     X11,
+     Wayland,
+     LibRetro,
++    PS5, // VideoOut, as a VK_KHR_display surface the frontend makes (vk_platform.cpp)
+ };
+ 
+ struct Frame;
+diff --git a/src/video_core/renderer_vulkan/vk_platform.cpp b/src/video_core/renderer_vulkan/vk_platform.cpp
+index b0a800e6f..0998a9436 100644
+--- a/src/video_core/renderer_vulkan/vk_platform.cpp
++++ b/src/video_core/renderer_vulkan/vk_platform.cpp
+@@ -9,6 +9,8 @@
+ #define VK_USE_PLATFORM_WIN32_KHR
+ #elif defined(__APPLE__)
+ #define VK_USE_PLATFORM_METAL_EXT
++#elif defined(__PROSPERO__)
++// the PS5: no window system; the screen is VK_KHR_display, which needs no platform define
+ #else
+ #define VK_USE_PLATFORM_WAYLAND_KHR
+ #define VK_USE_PLATFORM_XLIB_KHR
+@@ -25,6 +27,13 @@
+ #include "core/frontend/emu_window.h"
+ #include "video_core/renderer_vulkan/vk_platform.h"
+ 
++#ifdef __PROSPERO__
++// The PS5 frontend's: the driver (RADV) is linked into the title, so its vkGetInstanceProcAddr
++// stands in for a loader, and the screen is a VK_KHR_display surface on VideoOut.
++PFN_vkGetInstanceProcAddr AzaharPS5_GetInstanceProcAddr();
++VkSurfaceKHR AzaharPS5_CreateSurface(VkInstance instance);
++#endif
++
+ namespace Vulkan {
+ 
+ namespace {
+@@ -105,7 +114,9 @@ std::shared_ptr<Common::DynamicLibrary> OpenLibrary(
+     }
+ #endif
+     auto library = std::make_shared<Common::DynamicLibrary>();
+-#ifdef __APPLE__
++#if defined(__PROSPERO__)
++    // nothing to load: CreateInstance takes the linked driver's entry point
++#elif defined(__APPLE__)
+     const std::string filename = Common::DynamicLibrary::GetLibraryName("vulkan");
+     if (!library->Load(filename)) {
+         // Fall back to directly loading bundled MoltenVK library.
+@@ -196,6 +207,11 @@ vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::EmuWindow& e
+         }
+     }
+ #endif
++#ifdef __PROSPERO__
++    if (window_info.type == Frontend::WindowSystemType::PS5) {
++        surface = vk::SurfaceKHR{AzaharPS5_CreateSurface(static_cast<VkInstance>(instance))};
++    }
++#endif
+ 
+     if (!surface) {
+         LOG_CRITICAL(Render_Vulkan, "Presentation not supported on this platform");
+@@ -245,6 +261,10 @@ std::vector<const char*> GetInstanceExtensions(Frontend::WindowSystemType window
+     case Frontend::WindowSystemType::Android:
+         extensions.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+         break;
++#elif defined(__PROSPERO__)
++    case Frontend::WindowSystemType::PS5:
++        extensions.push_back(VK_KHR_DISPLAY_EXTENSION_NAME);
++        break;
+ #endif
+     default:
+         LOG_ERROR(Render_Vulkan, "Presentation not supported on this platform");
+@@ -288,12 +308,16 @@ vk::InstanceCreateFlags GetInstanceFlags() {
+ vk::UniqueInstance CreateInstance(const Common::DynamicLibrary& library,
+                                   Frontend::WindowSystemType window_type, bool enable_validation,
+                                   bool dump_command_buffers) {
++#ifdef __PROSPERO__
++    const auto vkGetInstanceProcAddr = AzaharPS5_GetInstanceProcAddr();
++#else
+     if (!library.IsLoaded()) {
+         throw std::runtime_error("Failed to load Vulkan driver library");
+     }
+ 
+     const auto vkGetInstanceProcAddr =
+         library.GetSymbol<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
++#endif
+     if (!vkGetInstanceProcAddr) {
+         throw std::runtime_error("Failed GetSymbol vkGetInstanceProcAddr");
+     }

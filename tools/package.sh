@@ -9,8 +9,8 @@
 #     sce_sys/pic0.dds, pic1.dds      its home screen background (selected, starting)
 #     sce_module/libc.prx             the boilerplate's clean-room runtime
 #     sandbox-elevator.elf            the boilerplate's /data helper, built for PPSA99360
-#     assets/ui/                      the launcher: ProsperoEden's artwork (in dark blue) and fonts,
-#                                     port/frontend/ui
+#     assets/ui/                      the launcher: ProsperoEden's artwork (in blue and in gold) and
+#                                     fonts, its layouts, port/frontend/ui's stylesheet
 #     assets/cemu/                    Cemu's game profiles and the Wii U system fonts
 #     assets/graphicPacks/            the community graphic packs (installed on first start)
 #
@@ -85,22 +85,23 @@ grep -q "\"$title\"" "$helper/payload/main.cpp" || { echo "the elevation helper'
 make -s -C "$helper/payload" PS5_PAYLOAD_SDK="$PS5_PAYLOAD_SDK" OUTPUT="$app/sandbox-elevator.elf"
 python3 -B "$boilerplate/tools/validate-elevation-helper.py" "$app/sandbox-elevator.elf" >/dev/null
 
-# The launcher: ProsperoEden's artwork, fonts and stylesheet in dark blue (tools/recolour-ui.py),
-# and PS5Cemu's layout and icons. Its background, the Wii U Homebrew Launcher's with its bubbles
-# rising, is drawn as it runs (port/frontend/bubbles.h).
+# The launcher: ProsperoEden's artwork, fonts and stylesheet in Cemu's blue and Azahar's gold
+# (tools/recolour-ui.py), its layouts (tools/render-layout.py: the start screen, Cemu's side and
+# Azahar's) and PS5CEMU-HAR's icons. Its backgrounds, the Homebrew Launchers' bubbles and waves, are
+# drawn as it runs (port/frontend/bubbles.h, wave.h).
 ui=$app/assets/ui
 prospero=$deps/ProsperoEden/headless/prosperoeden/ui
-python3 -B "$PS5CEMU_ROOT/tools/recolour-ui.py" "$prospero" "$ui"
-cp "$PS5CEMU_ROOT/port/frontend/ui/ps5cemu.rcss" "$ui/styles/"
-cp "$PS5CEMU_ROOT/port/frontend/ui/main.rml" "$ui/"
+python3 -B "$PS5CEMU_ROOT/tools/recolour-ui.py" "$prospero" "$PS5CEMU_ROOT/port/frontend/ui/ps5cemu.rcss" "$ui"
+python3 -B "$PS5CEMU_ROOT/tools/render-layout.py" "$ui"
 cp "$work/icons/ui/icons/"*.tga "$ui/icons/"
 python3 - "$ui" <<'PY'
 import os, re, sys
 ui = sys.argv[1]
-missing = [src for src in sorted(set(re.findall(r'src="([^"]+)"', open(os.path.join(ui, "main.rml")).read())))
-           if not os.path.isfile(os.path.join(ui, src))]
-if missing:
-    sys.exit("the launcher's layout names missing files: " + ", ".join(missing))
+for layout in ("start.rml", "main.rml", "azahar.rml"):
+    text = open(os.path.join(ui, layout)).read()
+    missing = [src for src in sorted(set(re.findall(r'(?:src|href)="([^"]+)"', text))) if not os.path.isfile(os.path.join(ui, src))]
+    if missing:
+        sys.exit(f"the launcher's {layout} names missing files: " + ", ".join(missing))
 PY
 
 # Cemu's read-only data: game profiles, and the Wii U's system fonts games draw text with.

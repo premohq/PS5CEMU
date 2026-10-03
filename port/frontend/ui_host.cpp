@@ -7,7 +7,8 @@
 // (headless/prosperoeden/frontend.cpp, GPL-3.0-or-later, by BlackBearReloaded) is adapted here.
 // The GPU stays Cemu's: RmlUi's Vulkan renderer on RADV presented frames, but nothing it drew
 // reached them. SDL closes VideoOut again before a game starts, so Cemu's renderer finds it free.
-// Under the page is the Wii U Homebrew Launcher's background with its bubbles rising (bubbles.h),
+// Under the page is Cemu's background, the Wii U Homebrew Launcher's with its bubbles rising
+// (bubbles.h), Azahar's, a yellow 3DS Homebrew Launcher's waves (wave.h), or the two side by side,
 // drawn each frame before RmlUi draws.
 
 #define SDL_MAIN_HANDLED
@@ -15,6 +16,7 @@
 
 #include "ui_host.h"
 #include "bubbles.h"
+#include "wave.h"
 #include "../app/paths.h"
 #include "../ps5/log.h"
 
@@ -27,6 +29,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -339,8 +342,9 @@ namespace
 		bool m_scissorEnabled = false;
 	};
 
-	// The background: its gradient, and one picture of a bubble for each radius, drawn where each
-	// bubble is with its alpha.
+	// The backgrounds. Cemu's: its gradient, and one picture of a bubble for each radius, drawn where
+	// each bubble is with its alpha. Azahar's: its gradient, and each wave's picture, drawn from
+	// where the wave has got to.
 	class Background
 	{
 	public:
@@ -348,8 +352,18 @@ namespace
 		{
 			const auto gradient = ps5ui::Bubbles::Gradient();
 			m_gradient = Texture(renderer, gradient.data(), ps5ui::Bubbles::kWidth, ps5ui::Bubbles::kHeight, SDL_BLENDMODE_NONE);
-			if (!m_gradient)
+			const auto waveGradient = ps5ui::Wave::Gradient();
+			m_waveGradient = Texture(renderer, waveGradient.data(), ps5ui::Wave::kWidth, ps5ui::Wave::kHeight, SDL_BLENDMODE_NONE);
+			if (!m_gradient || !m_waveGradient)
 				return false;
+			for (int layer = 0; layer < ps5ui::Wave::kLayers; layer++)
+			{
+				const auto picture = ps5ui::Wave::Picture(layer);
+				m_waves[layer] = Texture(renderer, picture.data(), ps5ui::Wave::PictureWidth(layer), ps5ui::Wave::LayerOf(layer).height,
+					SDL_BLENDMODE_BLEND);
+				if (!m_waves[layer])
+					return false;
+			}
 			for (int radius = 1; radius <= ps5ui::Bubbles::kMaxRadius; radius++)
 			{
 				const int size = ps5ui::Bubbles::DiscSize(radius);
@@ -367,10 +381,46 @@ namespace
 			return true;
 		}
 
-		void Draw(SDL_Renderer* renderer, double now)
+		// Both: the bubbles on the left half, the waves on the right.
+		void Draw(SDL_Renderer* renderer, double now, ps5ui::Scene scene)
 		{
-			m_bubbles.Advance(m_last > 0.0 ? now - m_last : 0.0);
+			const double step = m_last > 0.0 ? now - m_last : 0.0;
 			m_last = now;
+			m_bubbles.Advance(step);
+			m_wave.Advance(step);
+			const SDL_Rect left{0, 0, ps5ui::Bubbles::kWidth / 2, ps5ui::Bubbles::kHeight};
+			const SDL_Rect right{ps5ui::Bubbles::kWidth / 2, 0, ps5ui::Bubbles::kWidth / 2, ps5ui::Bubbles::kHeight};
+			if (scene != ps5ui::Scene::Wave)
+			{
+				if (scene == ps5ui::Scene::Both)
+					SDL_RenderSetClipRect(renderer, &left);
+				DrawBubbles(renderer);
+			}
+			if (scene != ps5ui::Scene::Bubbles)
+			{
+				if (scene == ps5ui::Scene::Both)
+					SDL_RenderSetClipRect(renderer, &right);
+				DrawWave(renderer);
+			}
+			SDL_RenderSetClipRect(renderer, nullptr);
+		}
+
+		void Destroy()
+		{
+			for (SDL_Texture** texture : {&m_gradient, &m_waveGradient})
+				if (*texture)
+					SDL_DestroyTexture(std::exchange(*texture, nullptr));
+			for (SDL_Texture*& disc : m_discs)
+				if (disc)
+					SDL_DestroyTexture(std::exchange(disc, nullptr));
+			for (SDL_Texture*& wave : m_waves)
+				if (wave)
+					SDL_DestroyTexture(std::exchange(wave, nullptr));
+		}
+
+	private:
+		void DrawBubbles(SDL_Renderer* renderer)
+		{
 			SDL_RenderCopy(renderer, m_gradient, nullptr, nullptr);
 			for (const auto& bubble : m_bubbles.List())
 			{
@@ -382,17 +432,18 @@ namespace
 			}
 		}
 
-		void Destroy()
+		void DrawWave(SDL_Renderer* renderer)
 		{
-			if (m_gradient)
-				SDL_DestroyTexture(m_gradient);
-			for (SDL_Texture*& disc : m_discs)
-				if (disc)
-					SDL_DestroyTexture(std::exchange(disc, nullptr));
-			m_gradient = nullptr;
+			SDL_RenderCopy(renderer, m_waveGradient, nullptr, nullptr);
+			for (int layer = 0; layer < ps5ui::Wave::kLayers; layer++)
+			{
+				const auto& wave = ps5ui::Wave::LayerOf(layer);
+				const SDL_Rect from{m_wave.Offset(layer), 0, ps5ui::Wave::kWidth, wave.height};
+				const SDL_Rect to{0, wave.top, ps5ui::Wave::kWidth, wave.height};
+				SDL_RenderCopy(renderer, m_waves[layer], &from, &to);
+			}
 		}
 
-	private:
 		static SDL_Texture* Texture(SDL_Renderer* renderer, const uint8_t* bgra, int width, int height, SDL_BlendMode blend)
 		{
 			SDL_Surface* staging = SDL_CreateRGBSurfaceWithFormatFrom(const_cast<uint8_t*>(bgra), width, height, 32, width * 4, SDL_PIXELFORMAT_BGRA32);
@@ -406,9 +457,12 @@ namespace
 		}
 
 		ps5ui::Bubbles m_bubbles;
+		ps5ui::Wave m_wave;
 		double m_last = 0.0;
 		SDL_Texture* m_gradient = nullptr;
 		std::array<SDL_Texture*, ps5ui::Bubbles::kMaxRadius + 1> m_discs{};
+		SDL_Texture* m_waveGradient = nullptr;
+		std::array<SDL_Texture*, ps5ui::Wave::kLayers> m_waves{};
 	};
 
 	struct Host
@@ -424,7 +478,8 @@ namespace
 		SDL_Renderer* renderer = nullptr;
 		bool rml = false;
 		Rml::Context* context = nullptr;
-		Rml::ElementDocument* document = nullptr;
+		std::map<std::string, Rml::ElementDocument*> documents;
+		ps5ui::Scene scene = ps5ui::Scene::Both;
 		uint64_t frames = 0;
 	};
 	Host* s_host = nullptr;
@@ -492,21 +547,43 @@ namespace ps5ui
 			}
 		}
 		host.context = Rml::CreateContext("ps5cemu", {kWidth, kHeight});
-		host.document = host.context ? host.context->LoadDocument(AssetPath("main.rml")) : nullptr;
-		if (!host.document)
+		if (!host.context)
 		{
-			error = "the launcher's layout (assets/ui/main.rml) did not load";
+			error = "RmlUi's context could not be made";
 			Stop();
 			return false;
 		}
-		host.document->Show();
 		ps5log::Line("[ui] launcher started (SDL video driver: {})", SDL_GetCurrentVideoDriver());
 		return true;
 	}
 
-	Rml::ElementDocument* Document()
+	Rml::ElementDocument* Show(const std::string& name)
 	{
-		return s_host ? s_host->document : nullptr;
+		if (!s_host || !s_host->context)
+			return nullptr;
+		auto& documents = s_host->documents;
+		auto it = documents.find(name);
+		if (it == documents.end())
+		{
+			Rml::ElementDocument* document = s_host->context->LoadDocument(AssetPath(name));
+			if (!document)
+			{
+				ps5log::Line("[ui] the launcher's layout {} did not load", name);
+				return nullptr;
+			}
+			it = documents.emplace(name, document).first;
+		}
+		for (auto& [other, document] : documents)
+			if (other != name)
+				document->Hide();
+		it->second->Show();
+		return it->second;
+	}
+
+	void SetScene(Scene scene)
+	{
+		if (s_host)
+			s_host->scene = scene;
 	}
 
 	void Frame()
@@ -525,7 +602,7 @@ namespace ps5ui
 		step("layout");
 		host.context->Update();
 		step("draw");
-		host.background.Draw(host.renderer, start / 1000000.0);
+		host.background.Draw(host.renderer, start / 1000000.0, host.scene);
 		host.context->Render();
 		SDL_RenderFlush(host.renderer);
 		step("present");
@@ -547,8 +624,8 @@ namespace ps5ui
 		if (!s_host)
 			return;
 		Host& host = *s_host;
-		if (host.document)
-			host.document->Close();
+		for (auto& [name, document] : host.documents)
+			document->Close();
 		if (host.context)
 			Rml::RemoveContext("ps5cemu");
 		// RmlUi releases its textures through the renderer: SDL goes after it

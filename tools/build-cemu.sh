@@ -23,16 +23,22 @@ fi
 
 bash "$PS5CEMU_ROOT/tools/cemu-patches.sh" apply
 
-if [[ ! -f $build/build.ninja ]]; then
+options=(
+    -DCMAKE_TOOLCHAIN_FILE="$PS5CEMU_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release
+    -DCEMU_PS5=ON -DCEMU_PS5_PORT_DIR="$PS5CEMU_ROOT/port"
+    -DENABLE_VCPKG=OFF -DENABLE_WXWIDGETS=OFF -DENABLE_OPENGL=OFF -DENABLE_METAL=OFF -DENABLE_VULKAN=ON
+    -DENABLE_DISCORD_RPC=OFF -DENABLE_HIDAPI=OFF -DENABLE_SDL=OFF -DENABLE_LIBUSB=OFF -DENABLE_CUBEB=OFF
+    -DALLOW_PORTABLE=OFF -DBoost_USE_STATIC_LIBS=ON -DBoost_ROOT="$PS5CEMU_SYSROOT"
+    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF
+    # Azahar's core, when tools/build-azahar.sh has built it (port/CMakeLists.txt)
+    -DPS5CEMU_AZAHAR_LIBRARIES="$PS5CEMU_BUILD/azahar/azahar_ps5_libraries.txt"
+)
+# configured again when the options change (this script's), as CMake would not know
+if [[ ! -f $build/build.ninja || $(cat "$build/ps5-options" 2>/dev/null) != "${options[*]}" ]]; then
     mkdir -p "$build"
-    cmake -S "$cemu" -B "$build" -G Ninja -Wno-dev \
-        -DCMAKE_TOOLCHAIN_FILE="$PS5CEMU_TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release \
-        -DCEMU_PS5=ON -DCEMU_PS5_PORT_DIR="$PS5CEMU_ROOT/port" \
-        -DENABLE_VCPKG=OFF -DENABLE_WXWIDGETS=OFF -DENABLE_OPENGL=OFF -DENABLE_METAL=OFF -DENABLE_VULKAN=ON \
-        -DENABLE_DISCORD_RPC=OFF -DENABLE_HIDAPI=OFF -DENABLE_SDL=OFF -DENABLE_LIBUSB=OFF -DENABLE_CUBEB=OFF \
-        -DALLOW_PORTABLE=OFF -DBoost_USE_STATIC_LIBS=ON -DBoost_ROOT="$PS5CEMU_SYSROOT" \
-        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=OFF \
+    cmake -S "$cemu" -B "$build" -G Ninja -Wno-dev "${options[@]}" \
         >"$build.configure.log" 2>&1 || { tail -40 "$build.configure.log"; exit 1; }
+    echo "${options[*]}" >"$build/ps5-options"
 fi
 
 # ps5cemu.elf is relinked when a link check gives way to RADV (tools/link.sh), or the other way round:

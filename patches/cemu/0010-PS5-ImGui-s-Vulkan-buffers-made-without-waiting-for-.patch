@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 22:55:18 +0000
+Subject: [PATCH] PS5: ImGui's Vulkan buffers made without waiting for the
+ device
+
+ImGui's Vulkan backend waited for the whole device to be idle before it
+made or grew a vertex or index buffer. PS5CEMU-HAR also draws its 3DS
+menu with it, into Azahar's command buffers, while Azahar's other
+threads submit to the queue, which a device-wide wait must not overlap.
+A first buffer now waits for nothing, and buffers start at 1 MiB of
+vertices and 512 KiB of indices, more than a menu draws, so it never
+grows them. Cemu's own overlays still wait when they grow one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/imgui/imgui_impl_vulkan.cpp | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/imgui/imgui_impl_vulkan.cpp b/src/imgui/imgui_impl_vulkan.cpp
+index f9a2316..cf530b9 100644
+--- a/src/imgui/imgui_impl_vulkan.cpp
++++ b/src/imgui/imgui_impl_vulkan.cpp
+@@ -246,7 +246,16 @@ static void check_vk_result(VkResult err)
+ static void CreateOrResizeBuffer(VkBuffer& buffer, VkDeviceMemory& buffer_memory, VkDeviceSize& p_buffer_size, size_t new_size, VkBufferUsageFlagBits usage)
+ {
+ 	ImGui_ImplVulkan_InitInfo* v = &g_VulkanInitInfo;
++#if defined(CEMU_PS5)
++	// PS5CEMU-HAR also draws its 3DS menu with this, in Azahar's command buffers while Azahar's
++	// other threads use the queue: a first buffer waits for nothing, and buffers start big enough
++	// that a menu never grows them
++	if (buffer != VK_NULL_HANDLE)
++		vkDeviceWaitIdle(v->Device); // make sure previously created buffer is not in use anymore
++	new_size = std::max<size_t>(new_size, usage == VK_BUFFER_USAGE_VERTEX_BUFFER_BIT ? 1024 * 1024 : 512 * 1024);
++#else
+ 	vkDeviceWaitIdle(v->Device); // make sure previously created buffer is not in use anymore
++#endif
+     VkResult err;
+ 	if (buffer != VK_NULL_HANDLE)
+ 		vkDestroyBuffer(v->Device, buffer, v->Allocator);

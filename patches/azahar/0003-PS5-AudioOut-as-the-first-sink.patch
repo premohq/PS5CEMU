@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Fri, 2 Oct 2026 23:28:18 +0000
+Subject: [PATCH] PS5: AudioOut as the first sink
+
+The PS5 frontend provides an AudioOut sink (CreatePS5Sink); on the PS5 it
+is the first in the list, which Auto picks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/audio_core/sink_details.cpp | 9 +++++++++
+ src/audio_core/sink_details.h   | 3 +++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/audio_core/sink_details.cpp b/src/audio_core/sink_details.cpp
+index af019b490..a86477ceb 100644
+--- a/src/audio_core/sink_details.cpp
++++ b/src/audio_core/sink_details.cpp
+@@ -23,9 +23,18 @@
+ #include "common/logging/log.h"
+ 
+ namespace AudioCore {
++#ifdef __PROSPERO__
++// The PS5's AudioOut, from the PS5 frontend (PS5CEMU-HAR's port/azahar).
++std::unique_ptr<Sink> CreatePS5Sink(std::string_view device_id);
++#endif
++
+ namespace {
+ // sink_details is ordered in terms of desirability, with the best choice at the top.
+ constexpr std::array sink_details = {
++#ifdef __PROSPERO__
++    SinkDetails{SinkType::PS5, "AudioOut", &CreatePS5Sink,
++                [] { return std::vector<std::string>{"AudioOut"}; }},
++#endif
+ #ifdef HAVE_LIBRETRO
+     SinkDetails{SinkType::LibRetro, "libretro",
+                 [](std::string_view device_id) -> std::unique_ptr<Sink> {
+diff --git a/src/audio_core/sink_details.h b/src/audio_core/sink_details.h
+index 7e717547b..bb473c6df 100644
+--- a/src/audio_core/sink_details.h
++++ b/src/audio_core/sink_details.h
+@@ -23,6 +23,9 @@ enum class SinkType : u32 {
+ #ifdef HAVE_LIBRETRO
+     LibRetro = 5,
+ #endif
++#ifdef __PROSPERO__
++    PS5 = 6,
++#endif
+ };
+ 
+ struct SinkDetails {

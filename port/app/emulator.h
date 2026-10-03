@@ -21,7 +21,9 @@ namespace ps5emu
 		uint16_t version = 0;		 // the base's, or the update's when installed
 		bool hasUpdate = false;
 		uint32_t dlcCount = 0;
-		std::string format;			 // WUA, WUD, WUX, folder (code/content/meta) or RPX
+		std::string format;			 // WUA, WUD, WUX, folder (code/content/meta) or RPX; 3DS, CIA, 3DSX...
+		std::string publisher;		 // a 3DS game's, from its SMDH
+		std::string gameId;			 // the ID on its box, GameTDB's (boxart.h): ALZE01 (Wii U), AREE (3DS)
 	};
 
 	// What the launcher's settings change in Cemu's.
@@ -179,6 +181,9 @@ namespace ps5emu
 	InstallStatus GetInstallStatus();
 	// Stops an install and puts back what was there.
 	void CancelInstall();
+	// The boot log's memory line, once a minute in a game (Cemu's or Azahar's).
+	void LogMemory();
+
 	// Looks for games again (after an install), as at start: Scanning() is true until done.
 	void Rescan();
 }
